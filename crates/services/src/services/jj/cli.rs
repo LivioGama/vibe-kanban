@@ -314,7 +314,16 @@ impl JujutsuCli {
         self.parse_status(&output)
     }
 
-    /// Rebase changes (typically not needed due to jj's automatic rebase)
+    /// Rebase changes (typically not needed due to jj's automatic evolution)
+    /// 
+    /// Note: In jj's change model, explicit rebasing is rarely necessary.
+    /// Changes evolve automatically when their ancestors change. Use this only
+    /// when you need to explicitly reparent a change to a different base.
+    /// 
+    /// Most workflows should use:
+    /// - `jj new` to create a new change based on the current location
+    /// - Natural change evolution via ancestor updates
+    /// - `jj rebase -r <change>` for simple reparenting
     pub fn rebase(
         &self,
         repo_path: &Path,

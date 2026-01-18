@@ -37,6 +37,8 @@ pub enum GitCliError {
     AuthFailed(String),
     #[error("push rejected: {0}")]
     PushRejected(String),
+    /// DEPRECATED: Not used with jj's change model (no rebase state to manage)
+    #[deprecated(note = "jj doesn't have rebase state")]
     #[error("rebase in progress in this worktree")]
     RebaseInProgress,
 }
@@ -485,40 +487,25 @@ impl GitCli {
     }
 
     /// Perform `git rebase --onto <new_base> <old_base>` on <task_branch> in `worktree_path`.
+    // DEPRECATED: Git rebase is not needed with jj's change model
+    // jj handles change evolution automatically without explicit rebase operations.
+    #[deprecated(note = "Use jj's change model instead of git rebase")]
     pub fn rebase_onto(
         &self,
-        worktree_path: &Path,
-        new_base: &str,
-        old_base: &str,
-        task_branch: &str,
+        _worktree_path: &Path,
+        _new_base: &str,
+        _old_base: &str,
+        _task_branch: &str,
     ) -> Result<(), GitCliError> {
-        // If a rebase is in progress, refuse to proceed. The caller can
-        // choose to abort or continue; we avoid destructive actions here.
-        if self.is_rebase_in_progress(worktree_path).unwrap_or(false) {
-            return Err(GitCliError::RebaseInProgress);
-        }
-        // compute the merge base of task_branch from old_base
-        let merge_base = self
-            .merge_base(worktree_path, old_base, task_branch)
-            .unwrap_or(old_base.to_string());
-
-        self.git(
-            worktree_path,
-            ["rebase", "--onto", new_base, &merge_base, task_branch],
-        )?;
-        Ok(())
+        Err(GitCliError::CommandFailed(
+            "Rebase operation is deprecated. Use jj's change model instead.".to_string()
+        ))
     }
 
-    /// Return true if there is a rebase in progress in this worktree.
-    /// We treat this as true when either of Git's rebase state directories exists:
-    /// - rebase-merge (interactive rebase)
-    /// - rebase-apply (am-based rebase)
-    pub fn is_rebase_in_progress(&self, worktree_path: &Path) -> Result<bool, GitCliError> {
-        let rebase_merge = self.git(worktree_path, ["rev-parse", "--git-path", "rebase-merge"])?;
-        let rebase_apply = self.git(worktree_path, ["rev-parse", "--git-path", "rebase-apply"])?;
-        let rm_exists = std::path::Path::new(rebase_merge.trim()).exists();
-        let ra_exists = std::path::Path::new(rebase_apply.trim()).exists();
-        Ok(rm_exists || ra_exists)
+    // DEPRECATED: Not needed with jj's change model (no rebase state to check)
+    #[deprecated(note = "jj doesn't have rebase state")]
+    pub fn is_rebase_in_progress(&self, _worktree_path: &Path) -> Result<bool, GitCliError> {
+        Ok(false)
     }
 
     /// Return true if a merge is in progress (MERGE_HEAD exists).
@@ -548,24 +535,16 @@ impl GitCli {
         }
     }
 
-    /// Abort an in-progress rebase in this worktree. If no rebase is in progress,
-    /// this is a no-op and returns Ok(()).
-    pub fn abort_rebase(&self, worktree_path: &Path) -> Result<(), GitCliError> {
-        // If nothing to abort, return success
-        if !self.is_rebase_in_progress(worktree_path)? {
-            return Ok(());
-        }
-        // Best-effort: if `git rebase --abort` fails, surface the error message
-        self.git(worktree_path, ["rebase", "--abort"]).map(|_| ())
+    // DEPRECATED: Not needed with jj's change model (no rebase to abort)
+    #[deprecated(note = "Use jj's conflict resolution instead")]
+    pub fn abort_rebase(&self, _worktree_path: &Path) -> Result<(), GitCliError> {
+        Ok(())
     }
 
-    /// Quit an in-progress rebase (cleanup metadata without modifying commits).
-    /// If no rebase is in progress, it's a no-op.
-    pub fn quit_rebase(&self, worktree_path: &Path) -> Result<(), GitCliError> {
-        if !self.is_rebase_in_progress(worktree_path)? {
-            return Ok(());
-        }
-        self.git(worktree_path, ["rebase", "--quit"]).map(|_| ())
+    // DEPRECATED: Not needed with jj's change model (no rebase to quit)
+    #[deprecated(note = "jj doesn't have rebase state to quit")]
+    pub fn quit_rebase(&self, _worktree_path: &Path) -> Result<(), GitCliError> {
+        Ok(())
     }
 
     /// Return true if there are staged changes (index differs from HEAD)

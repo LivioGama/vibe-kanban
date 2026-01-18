@@ -1076,6 +1076,11 @@ pub async fn rename_branch(
 }
 
 #[axum::debug_handler]
+/// Update target branch for a task attempt
+/// 
+/// With jj's change model, explicit rebasing is not needed. Changes evolve
+/// automatically when their ancestors change. This endpoint now simply updates
+/// the target branch in the database, and jj will handle the change evolution.
 pub async fn rebase_task_attempt(
     Extension(workspace): Extension<Workspace>,
     State(deployment): State<DeploymentImpl>,
@@ -1092,18 +1097,18 @@ pub async fn rebase_task_attempt(
         .await?
         .ok_or(RepoError::NotFound)?;
 
-    let old_base_branch = payload
-        .old_base_branch
-        .unwrap_or_else(|| workspace_repo.target_branch.clone());
     let new_base_branch = payload
         .new_base_branch
         .unwrap_or_else(|| workspace_repo.target_branch.clone());
 
+    // Verify the new base branch exists
     match deployment
         .git()
         .check_branch_exists(&repo.path, &new_base_branch)?
     {
         true => {
+            // Update the target branch in the database
+            // With jj, changes will automatically evolve when we switch to the new base
             WorkspaceRepo::update_target_branch(
                 pool,
                 workspace.id,
@@ -1123,45 +1128,17 @@ pub async fn rebase_task_attempt(
         }
     }
 
-    let container_ref = deployment
-        .container()
-        .ensure_container_exists(&workspace)
-        .await?;
-    let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
-
-    let result = deployment.git().rebase_branch(
-        &repo.path,
-        &worktree_path,
-        &new_base_branch,
-        &old_base_branch,
-        &workspace.branch.clone(),
-    );
-    if let Err(e) = result {
-        use services::services::git::GitServiceError;
-        return match e {
-            GitServiceError::MergeConflicts(msg) => Ok(ResponseJson(ApiResponse::<
-                (),
-                GitOperationError,
-            >::error_with_data(
-                GitOperationError::MergeConflicts { message: msg },
-            ))),
-            GitServiceError::RebaseInProgress => Ok(ResponseJson(ApiResponse::<
-                (),
-                GitOperationError,
-            >::error_with_data(
-                GitOperationError::RebaseInProgress,
-            ))),
-            other => Err(ApiError::GitService(other)),
-        };
-    }
+    // Note: With jj's change model, no explicit rebase operation is needed
+    // Changes evolve automatically based on their parent relationships
+    // The working copy will be updated when jj operations occur naturally
 
     deployment
         .track_if_analytics_allowed(
-            "task_attempt_rebased",
+            "task_attempt_target_branch_updated",
             serde_json::json!({
                 "workspace_id": workspace.id.to_string(),
                 "repo_id": payload.repo_id.to_string(),
+                "new_base_branch": new_base_branch,
             }),
         )
         .await;

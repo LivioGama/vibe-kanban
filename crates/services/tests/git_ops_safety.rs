@@ -406,7 +406,9 @@ fn push_and_fetch_roundtrip_updates_tracking_branch() {
     );
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_preserves_untracked_files() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_repo_with_worktree(&td);
@@ -428,7 +430,9 @@ fn rebase_preserves_untracked_files() {
     assert_eq!(content, "temporary note\n");
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_aborts_on_uncommitted_tracked_changes() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_repo_with_worktree(&td);
@@ -449,7 +453,9 @@ fn rebase_aborts_on_uncommitted_tracked_changes() {
     assert_eq!(edited, "feat change (edited)\n");
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_aborts_if_untracked_would_be_overwritten_by_base() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_repo_with_worktree(&td);
@@ -683,7 +689,9 @@ fn libgit2_merge_updates_task_ref_and_feature_head_preserves_dirty() {
     assert_eq!(head.oid, sha);
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_refuses_to_abort_existing_rebase() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_conflict_repo_with_worktree(&td);
@@ -713,7 +721,9 @@ fn rebase_refuses_to_abort_existing_rebase() {
     // Note: We do not auto-abort; user should resolve or abort explicitly
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_fast_forwards_when_no_unique_commits() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_no_unique_feature_repo(&td);
@@ -735,7 +745,9 @@ fn rebase_fast_forwards_when_no_unique_commits() {
     assert_eq!(after_oid, new_base_oid, "fast-forward onto new-base");
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_applies_multiple_commits_onto_ahead_base() {
     let td = TempDir::new().unwrap();
     let (repo_path, worktree_path) = setup_repo_with_worktree(&td);
@@ -880,7 +892,9 @@ fn merge_delete_vs_modify_conflict_behaves_safely() {
     assert_eq!(before, after, "main ref must remain unchanged on failure");
 }
 
+/// DEPRECATED: Tests git rebase which is not needed with jj's change model
 #[test]
+#[ignore = "git rebase is deprecated in favor of jj's change model"]
 fn rebase_preserves_rename_changes() {
     // feature renames a file; rebase onto new-base preserves rename
     let td = TempDir::new().unwrap();

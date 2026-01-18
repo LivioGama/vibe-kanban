@@ -8,6 +8,7 @@ pub mod assets;
 pub mod browser;
 pub mod diff;
 pub mod git;
+pub mod jj;
 pub mod jwt;
 pub mod log_msg;
 pub mod msg_store;

@@ -1,0 +1,237 @@
+---
+title: "Jujutsu (jj) Integration"
+description: "How to set up and use Jujutsu version control with Vibe Kanban"
+sidebarTitle: "Jujutsu (jj)"
+---
+
+## What is Jujutsu?
+
+[Jujutsu (jj)](https://martinvonz.github.io/jj/) is a powerful, next-generation version control system that combines Git-compatibility with advanced features like working-copy-as-a-commit, automatic conflict resolution, and an intuitive interface. Vibe Kanban supports jj as an alternative or complement to Git.
+
+## Why Use Jujutsu?
+
+- **Git-compatible**: Works seamlessly with Git repositories
+- **Better UX**: More intuitive commands and workflows
+- **Powerful features**: Advanced rebasing, conflict resolution, and branching
+- **Non-destructive**: Changes are never lost, easy to undo operations
+- **Co-exists with Git**: Can be used alongside Git in the same repository
+
+## Installation
+
+Vibe Kanban will check for jj at startup and display a warning if it's not installed. Follow the instructions below to install Jujutsu on your system.
+
+### macOS
+
+Using Homebrew:
+
+```bash
+brew install jj
+```
+
+### Linux
+
+Using Homebrew (Linux):
+
+```bash
+brew install jj
+```
+
+On Arch Linux:
+
+```bash
+pacman -S jj
+```
+
+### All Platforms
+
+Using Cargo:
+
+```bash
+cargo install --locked jj-cli
+```
+
+### Binary Downloads
+
+Download pre-built binaries from the [GitHub Releases page](https://github.com/martinvonz/jj/releases).
+
+## Setup
+
+### Automated Setup
+
+Run the included setup script to check your installation and configure jj:
+
+```bash
+node scripts/setup-jj.js
+```
+
+This script will:
+- Verify jj is installed
+- Create a default configuration file
+- Guide you through repository initialization
+
+### Manual Setup
+
+#### 1. Configure jj
+
+Create or edit `~/.config/jj/config.toml`:
+
+```toml
+# Jujutsu configuration for Vibe Kanban
+
+[user]
+name = "Your Name"
+email = "your.email@example.com"
+
+[ui]
+# Use the default diff tool
+diff-editor = "diff"
+# Show relative timestamps in logs
+relative-timestamps = true
+# Enable colored output
+color = "auto"
+
+[git]
+# Automatically push branches to git remote
+push-branch-prefix = ""
+# Fetch from all remotes by default
+auto-local-branch = true
+
+[revsets]
+# Log shows local branches plus main and master
+log = "@ | branches() | (main | master)"
+
+[aliases]
+# Common shortcuts
+st = ["status"]
+l = ["log"]
+show = ["show"]
+```
+
+#### 2. Initialize jj in Your Repository
+
+Navigate to your Git repository and run:
+
+```bash
+jj init --git
+```
+
+This initializes jj while keeping your existing Git history. The `.jj` directory will be created alongside your `.git` directory.
+
+## Using jj with Vibe Kanban
+
+Once jj is installed and configured, Vibe Kanban will automatically detect it and enable jj-specific features:
+
+### Working with Tasks
+
+When you create tasks in Vibe Kanban with jj-enabled repositories:
+
+- Each task gets its own jj change/commit
+- Changes are tracked automatically
+- Easy to switch between tasks without stashing
+- Conflicts are handled more gracefully
+
+### Common jj Commands
+
+Here are some common jj commands you'll use with Vibe Kanban:
+
+```bash
+# View status
+jj st
+
+# View log
+jj log
+
+# Create a new change
+jj new
+
+# Describe the current change
+jj describe -m "Your message"
+
+# Squash changes
+jj squash
+
+# Rebase
+jj rebase -d main
+
+# Push to Git remote
+jj git push
+```
+
+## Coexisting with Git
+
+Jujutsu can coexist with Git in the same repository. You can continue using Git commands, and jj will stay in sync:
+
+```bash
+# Use Git as usual
+git commit -m "A commit"
+git push
+
+# jj automatically sees Git commits
+jj log
+
+# Use jj commands
+jj new -m "A new change"
+
+# Sync back to Git
+jj git push
+```
+
+## Troubleshooting
+
+### jj not found
+
+If Vibe Kanban shows a warning that jj is not installed:
+
+1. Verify jj is in your PATH:
+   ```bash
+   which jj
+   ```
+
+2. If not found, install jj using one of the methods above
+
+3. Restart Vibe Kanban
+
+### Configuration issues
+
+If you encounter configuration issues:
+
+1. Check your config file:
+   ```bash
+   cat ~/.config/jj/config.toml
+   ```
+
+2. Validate the TOML syntax
+
+3. Run the setup script to create a default config:
+   ```bash
+   node scripts/setup-jj.js
+   ```
+
+### Repository initialization
+
+If you have issues initializing jj:
+
+1. Ensure you're in a Git repository:
+   ```bash
+   git status
+   ```
+
+2. Initialize jj with Git backend:
+   ```bash
+   jj init --git
+   ```
+
+3. Check for the `.jj` directory:
+   ```bash
+   ls -la .jj
+   ```
+
+## Learn More
+
+- **Official Documentation**: [martinvonz.github.io/jj](https://martinvonz.github.io/jj/)
+- **Tutorial**: [Getting Started with jj](https://martinvonz.github.io/jj/latest/tutorial/)
+- **GitHub**: [martinvonz/jj](https://github.com/martinvonz/jj)
+
+## Why jj is Optional
+
+While jj is a powerful tool, Vibe Kanban works perfectly fine with Git alone. The jj integration is optional and adds advanced version control features for users who want them. All core Vibe Kanban features work with standard Git.

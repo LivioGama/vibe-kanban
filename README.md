@@ -46,6 +46,12 @@ npx vibe-kanban
 
 Please head to the [website](https://vibekanban.com/docs) for the latest documentation and user guides.
 
+### Optional Integrations
+
+- **[Jujutsu (jj)](docs/integrations/jujutsu.mdx)**: Next-generation version control that works alongside Git. Install with `brew install jj` or `cargo install --locked jj-cli`.
+- **GitHub CLI**: For creating pull requests. Install with `brew install gh`.
+- **MCP Integration**: For streamlined task creation with coding agents.
+
 ## Support
 
 We use [GitHub Discussions](https://github.com/BloopAI/vibe-kanban/discussions) for feature requests. Please open a discussion to create a feature request. For bugs please open an issue on this repo.

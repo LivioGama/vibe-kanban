@@ -9,6 +9,7 @@ use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
+    jj::check_jj_installed,
     port_file::write_port_file,
     sentry::{self as sentry_utils, SentrySource, sentry_layer},
 };
@@ -44,6 +45,17 @@ async fn main() -> Result<(), VibeKanbanError> {
         .with(tracing_subscriber::fmt::layer().with_filter(env_filter))
         .with(sentry_layer())
         .init();
+
+    // Check for jj installation
+    match check_jj_installed().await {
+        Ok(jj_path) => {
+            tracing::info!("Jujutsu (jj) found at: {}", jj_path.display());
+        }
+        Err(e) => {
+            tracing::warn!("{}", e);
+            tracing::warn!("Some version control features may not be available without jj");
+        }
+    }
 
     // Create asset directory if it doesn't exist
     if !asset_dir().exists() {

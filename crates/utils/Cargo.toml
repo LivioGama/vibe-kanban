@@ -36,6 +36,7 @@ thiserror = { workspace = true }
 url = "2.5"
 reqwest = { workspace = true }
 sqlx = { version = "0.8.6", default-features = false, features = ["postgres", "uuid", "chrono"] }
+toml = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

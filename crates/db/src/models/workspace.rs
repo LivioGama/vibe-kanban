@@ -388,7 +388,9 @@ impl Workspace {
                 w.updated_at as "updated_at!: DateTime<Utc>",
                 w.archived as "archived!: bool",
                 w.pinned as "pinned!: bool",
-                w.name
+                w.name,
+                COALESCE(w.vcs_type, 'git') as "vcs_type!: String",
+                w.jj_change_id
             FROM workspaces w
             JOIN tasks t ON w.task_id = t.id
             LEFT JOIN sessions s ON w.id = s.workspace_id
@@ -437,7 +439,7 @@ impl Workspace {
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name"#,
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name, COALESCE(vcs_type, 'git') as "vcs_type!: String", jj_change_id"#,
             id,
             task_id,
             Option::<String>::None,
@@ -611,6 +613,8 @@ impl Workspace {
                 w.archived AS "archived!: bool",
                 w.pinned AS "pinned!: bool",
                 w.name,
+                w.vcs_type,
+                w.jj_change_id,
 
                 CASE WHEN EXISTS (
                     SELECT 1
@@ -653,6 +657,8 @@ impl Workspace {
                     archived: rec.archived,
                     pinned: rec.pinned,
                     name: rec.name,
+                    vcs_type: rec.vcs_type.unwrap_or_else(|| "git".to_string()),
+                    jj_change_id: rec.jj_change_id,
                 },
                 is_running: rec.is_running != 0,
                 is_errored: rec.is_errored != 0,
@@ -712,6 +718,8 @@ impl Workspace {
                 w.archived AS "archived!: bool",
                 w.pinned AS "pinned!: bool",
                 w.name,
+                w.vcs_type,
+                w.jj_change_id,
 
                 CASE WHEN EXISTS (
                     SELECT 1
@@ -757,6 +765,8 @@ impl Workspace {
                 archived: rec.archived,
                 pinned: rec.pinned,
                 name: rec.name,
+                vcs_type: rec.vcs_type.unwrap_or_else(|| "git".to_string()),
+                jj_change_id: rec.jj_change_id,
             },
             is_running: rec.is_running != 0,
             is_errored: rec.is_errored != 0,

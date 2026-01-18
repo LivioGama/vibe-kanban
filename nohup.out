@@ -1,0 +1,6 @@
+
+> vibe-kanban@0.0.155 preview /Users/livio/Documents/vibe-kanban/frontend
+> vite preview -- --port 3000 --host
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: use --host to expose

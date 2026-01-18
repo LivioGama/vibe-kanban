@@ -255,6 +255,7 @@ impl WorkspaceRepo {
                       r.path,
                       r.name,
                       r.display_name,
+                      COALESCE(r.vcs_backend, 'git') as "vcs_backend!",
                       r.setup_script,
                       r.cleanup_script,
                       r.copy_files,

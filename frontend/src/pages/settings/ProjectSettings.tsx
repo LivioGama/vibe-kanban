@@ -219,6 +219,7 @@ export function ProjectSettings() {
       const newRepo = await projectsApi.addRepository(selectedProjectId, {
         display_name: repo.display_name,
         git_repo_path: repo.path,
+        vcs_backend: 'jj',
       });
       setRepositories((prev) => [...prev, newRepo]);
       queryClient.invalidateQueries({

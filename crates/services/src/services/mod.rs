@@ -13,6 +13,7 @@ pub mod git;
 pub mod git_host;
 pub mod image;
 pub mod jj;
+pub mod jj_workspace_manager;
 pub mod notification;
 pub mod oauth_credentials;
 pub mod pr_monitor;

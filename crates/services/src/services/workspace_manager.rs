@@ -6,7 +6,10 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use super::worktree_manager::{WorktreeCleanup, WorktreeError, WorktreeManager};
+use super::{
+    jj_workspace_manager::{JjWorkspaceManager, JjWorkspaceError, RepoJjSession},
+    worktree_manager::{WorktreeCleanup, WorktreeError, WorktreeManager},
+};
 
 #[derive(Debug, Clone)]
 pub struct RepoWorkspaceInput {
@@ -27,6 +30,8 @@ impl RepoWorkspaceInput {
 pub enum WorkspaceError {
     #[error(transparent)]
     Worktree(#[from] WorktreeError),
+    #[error(transparent)]
+    JjWorkspace(#[from] JjWorkspaceError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("No repositories provided")]
@@ -54,6 +59,74 @@ pub struct WorktreeContainer {
 pub struct WorkspaceManager;
 
 impl WorkspaceManager {
+    /// Check if a repository is a jj repository
+    pub fn is_jj_repo(repo_path: &Path) -> bool {
+        let jj_manager = JjWorkspaceManager::new();
+        jj_manager.is_jj_available() && jj_manager.is_jj_repo(repo_path).unwrap_or(false)
+    }
+
+    /// Detect if all repositories in the project are jj repositories
+    pub fn are_all_jj_repos(repos: &[RepoWorkspaceInput]) -> bool {
+        repos.iter().all(|repo| Self::is_jj_repo(&repo.repo.path))
+    }
+
+    /// Create jj sessions for all repositories
+    /// This is the killer feature: all agents work in same directory with separate changes!
+    pub async fn create_jj_sessions(
+        repos: &[RepoWorkspaceInput],
+        session_id: Uuid,
+    ) -> Result<Vec<RepoJjSession>, WorkspaceError> {
+        if repos.is_empty() {
+            return Err(WorkspaceError::NoRepositories);
+        }
+
+        info!(
+            "Creating jj sessions for {} repositories (session {})",
+            repos.len(),
+            session_id
+        );
+
+        let jj_manager = JjWorkspaceManager::new();
+        let mut sessions = Vec::new();
+
+        for input in repos {
+            let change_id = jj_manager
+                .create_session(&input.repo.path, session_id, None)
+                .map_err(WorkspaceError::JjWorkspace)?;
+
+            sessions.push(RepoJjSession {
+                repo_id: input.repo.id,
+                repo_name: input.repo.name.clone(),
+                repo_path: input.repo.path.clone(),
+                change_id,
+                session_id,
+            });
+
+            info!(
+                "Created jj session for repo '{}' with change ID: {}",
+                input.repo.name, sessions.last().unwrap().change_id
+            );
+        }
+
+        info!(
+            "Successfully created {} jj sessions (all in same directories!)",
+            sessions.len()
+        );
+
+        Ok(sessions)
+    }
+
+    /// Cleanup jj sessions by abandoning changes
+    pub async fn cleanup_jj_sessions(sessions: &[RepoJjSession]) -> Result<(), WorkspaceError> {
+        info!("Cleaning up {} jj sessions", sessions.len());
+
+        let jj_manager = JjWorkspaceManager::new();
+        jj_manager
+            .batch_cleanup_sessions(sessions)
+            .map_err(WorkspaceError::JjWorkspace)?;
+
+        Ok(())
+    }
     /// Create a workspace with worktrees for all repositories.
     /// On failure, rolls back any already-created worktrees.
     pub async fn create_workspace(

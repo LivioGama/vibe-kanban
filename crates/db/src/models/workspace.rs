@@ -48,6 +48,13 @@ pub struct Workspace {
     pub archived: bool,
     pub pinned: bool,
     pub name: Option<String>,
+    #[serde(default = "default_vcs_type")]
+    pub vcs_type: String,
+    pub jj_change_id: Option<String>,
+}
+
+fn default_vcs_type() -> String {
+    "git".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -126,7 +133,9 @@ impl Workspace {
                               updated_at AS "updated_at!: DateTime<Utc>",
                               archived AS "archived!: bool",
                               pinned AS "pinned!: bool",
-                              name
+                              name,
+                              COALESCE(vcs_type, 'git') AS "vcs_type!: String",
+                              jj_change_id
                        FROM workspaces
                        WHERE task_id = $1
                        ORDER BY created_at DESC"#,
@@ -147,7 +156,9 @@ impl Workspace {
                               updated_at AS "updated_at!: DateTime<Utc>",
                               archived AS "archived!: bool",
                               pinned AS "pinned!: bool",
-                              name
+                              name,
+                              COALESCE(vcs_type, 'git') AS "vcs_type!: String",
+                              jj_change_id
                        FROM workspaces
                        ORDER BY created_at DESC"#
             )
@@ -178,7 +189,9 @@ impl Workspace {
                        w.updated_at        AS "updated_at!: DateTime<Utc>",
                        w.archived          AS "archived!: bool",
                        w.pinned            AS "pinned!: bool",
-                       w.name
+                       w.name,
+                       COALESCE(w.vcs_type, 'git') AS "vcs_type!: String",
+                       w.jj_change_id
                FROM    workspaces w
                JOIN    tasks t ON w.task_id = t.id
                JOIN    projects p ON t.project_id = p.id
@@ -267,7 +280,9 @@ impl Workspace {
                        updated_at        AS "updated_at!: DateTime<Utc>",
                        archived          AS "archived!: bool",
                        pinned            AS "pinned!: bool",
-                       name
+                       name,
+                       COALESCE(vcs_type, 'git') AS "vcs_type!: String",
+                       jj_change_id
                FROM    workspaces
                WHERE   id = $1"#,
             id
@@ -289,13 +304,54 @@ impl Workspace {
                        updated_at        AS "updated_at!: DateTime<Utc>",
                        archived          AS "archived!: bool",
                        pinned            AS "pinned!: bool",
-                       name
+                       name,
+                       COALESCE(vcs_type, 'git') AS "vcs_type!: String",
+                       jj_change_id
                FROM    workspaces
                WHERE   rowid = $1"#,
             rowid
         )
         .fetch_optional(pool)
         .await
+    }
+
+    /// Update jj change ID for a workspace
+    pub async fn update_jj_change_id(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        change_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query!(
+            "UPDATE workspaces SET jj_change_id = $1, vcs_type = 'jj', updated_at = $2 WHERE id = $3",
+            change_id,
+            now,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Clear jj change ID for a workspace
+    pub async fn clear_jj_change_id(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query!(
+            "UPDATE workspaces SET jj_change_id = NULL, updated_at = $1 WHERE id = $2",
+            now,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Check if workspace is using jj
+    pub fn is_jj_workspace(&self) -> bool {
+        self.vcs_type == "jj"
     }
 
     pub async fn container_ref_exists(

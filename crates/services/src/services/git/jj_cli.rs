@@ -251,6 +251,100 @@ impl JjCli {
         Ok(output.trim().to_string())
     }
 
+    /// Create a new change (for parallel agent sessions)
+    /// This creates a new change as a child of the current change
+    /// Equivalent to: jj new [--message <message>]
+    pub fn new_change(&self, repo_path: &Path, message: Option<&str>) -> Result<String, JjCliError> {
+        self.ensure_available()?;
+
+        let mut args = vec![OsString::from("new")];
+        
+        if let Some(msg) = message {
+            args.push(OsString::from("--message"));
+            args.push(OsString::from(msg));
+        }
+
+        self.jj(repo_path, args)?;
+        
+        // Get the change ID of the newly created change
+        self.get_current_change_id(repo_path)
+    }
+
+    /// Edit (checkout) a specific change
+    /// Equivalent to: jj edit <change_id>
+    pub fn edit_change(&self, repo_path: &Path, change_id: &str) -> Result<(), JjCliError> {
+        self.ensure_available()?;
+
+        let args = vec![
+            OsString::from("edit"),
+            OsString::from(change_id),
+        ];
+
+        self.jj(repo_path, args)?;
+        Ok(())
+    }
+
+    /// Abandon a change (cleanup for agent sessions)
+    /// This removes the change without merging it
+    /// Equivalent to: jj abandon <change_id>
+    pub fn abandon_change(&self, repo_path: &Path, change_id: &str) -> Result<(), JjCliError> {
+        self.ensure_available()?;
+
+        let args = vec![
+            OsString::from("abandon"),
+            OsString::from(change_id),
+        ];
+
+        self.jj(repo_path, args)?;
+        Ok(())
+    }
+
+    /// List all changes with their IDs and descriptions
+    /// Returns a list of (change_id, description) tuples
+    pub fn list_changes(&self, repo_path: &Path, limit: Option<usize>) -> Result<Vec<(String, String)>, JjCliError> {
+        self.ensure_available()?;
+
+        let mut args = vec![
+            OsString::from("log"),
+            OsString::from("--no-graph"),
+            OsString::from("--template"),
+            OsString::from("change_id ++ \"|\" ++ description"),
+        ];
+
+        if let Some(n) = limit {
+            args.push(OsString::from("--limit"));
+            args.push(OsString::from(n.to_string()));
+        }
+
+        let output = self.jj(repo_path, args)?;
+        
+        let changes = output
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(changes)
+    }
+
+    /// Get detailed information about a change
+    pub fn get_change_info(&self, repo_path: &Path, change_id: &str) -> Result<String, JjCliError> {
+        self.ensure_available()?;
+
+        let args = vec![
+            OsString::from("show"),
+            OsString::from(change_id),
+        ];
+
+        self.jj(repo_path, args)
+    }
+
     /// Sync with git and ensure all refs are up to date
     /// This combines import, export, and fetch operations
     pub fn sync_with_git(

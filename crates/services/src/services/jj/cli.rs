@@ -78,6 +78,23 @@ pub struct JjStatus {
     pub has_conflicts: bool,
     /// List of conflicted files
     pub conflicted_files: Vec<String>,
+    /// List of modified files (M)
+    pub modified_files: Vec<String>,
+    /// List of added files (A)
+    pub added_files: Vec<String>,
+    /// List of deleted files (D)
+    pub deleted_files: Vec<String>,
+}
+
+/// Diff summary entry (similar to git's --name-status)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JjDiffSummary {
+    /// Type of change (M, A, D, R)
+    pub change_type: String,
+    /// Path of the file
+    pub path: String,
+    /// Original path (for renames)
+    pub old_path: Option<String>,
 }
 
 /// Options for diff operations
@@ -89,8 +106,10 @@ pub struct JjDiffOptions {
     pub to: Option<String>,
     /// Filter to specific paths
     pub paths: Option<Vec<String>>,
-    /// Show summary only (stat mode)
+    /// Show summary only (similar to git --name-status)
     pub summary: bool,
+    /// Show stat (histogram of changes)
+    pub stat: bool,
 }
 
 /// Options for log operations
@@ -206,6 +225,10 @@ impl JujutsuCli {
         }
         
         if opts.summary {
+            args.push("--summary".into());
+        }
+        
+        if opts.stat {
             args.push("--stat".into());
         }
         
@@ -216,6 +239,26 @@ impl JujutsuCli {
         }
         
         self.jj(repo_path, args)
+    }
+
+    /// Get diff summary (similar to git diff --name-status)
+    pub fn diff_summary(
+        &self,
+        repo_path: &Path,
+        from: Option<&str>,
+        to: Option<&str>,
+        paths: Option<Vec<String>>,
+    ) -> Result<Vec<JjDiffSummary>, JujutsuCliError> {
+        let opts = JjDiffOptions {
+            from: from.map(|s| s.to_string()),
+            to: to.map(|s| s.to_string()),
+            paths,
+            summary: true,
+            stat: false,
+        };
+        
+        let output = self.diff(repo_path, opts)?;
+        self.parse_diff_summary(&output)
     }
 
     /// Query the change history
@@ -511,6 +554,9 @@ impl JujutsuCli {
         let mut has_changes = false;
         let mut has_conflicts = false;
         let mut conflicted_files = Vec::new();
+        let mut modified_files = Vec::new();
+        let mut added_files = Vec::new();
+        let mut deleted_files = Vec::new();
         
         for line in output.lines() {
             let line = line.trim();
@@ -523,6 +569,23 @@ impl JujutsuCli {
                 // Extract change ID
                 if let Some(id_part) = line.split_whitespace().nth(3) {
                     working_copy_change_id = id_part.to_string();
+                }
+            }
+            
+            // Parse file changes from status output
+            // Format is typically: "M file.txt" or "A file.txt" or "D file.txt"
+            if has_changes && !line.is_empty() && line.len() > 2 {
+                let chars: Vec<char> = line.chars().collect();
+                if chars.len() >= 2 && chars[1] == ' ' {
+                    let status_char = chars[0];
+                    let path = &line[2..].trim();
+                    
+                    match status_char {
+                        'M' => modified_files.push(path.to_string()),
+                        'A' => added_files.push(path.to_string()),
+                        'D' => deleted_files.push(path.to_string()),
+                        _ => {}
+                    }
                 }
             }
             
@@ -548,6 +611,9 @@ impl JujutsuCli {
             has_changes,
             has_conflicts,
             conflicted_files,
+            modified_files,
+            added_files,
+            deleted_files,
         })
     }
 
@@ -579,6 +645,44 @@ impl JujutsuCli {
         }
         
         Ok(files)
+    }
+
+    /// Parse diff summary output (from --summary flag)
+    fn parse_diff_summary(&self, output: &str) -> Result<Vec<JjDiffSummary>, JujutsuCliError> {
+        let mut entries = Vec::new();
+        
+        for line in output.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            
+            // Format is typically: "M file.txt" or "A file.txt" or "D file.txt" or "R old.txt => new.txt"
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+            
+            let change_type = parts[0].to_string();
+            
+            // Handle rename: "R old.txt => new.txt"
+            if change_type == "R" && parts.len() >= 4 && parts[2] == "=>" {
+                entries.push(JjDiffSummary {
+                    change_type,
+                    path: parts[3].to_string(),
+                    old_path: Some(parts[1].to_string()),
+                });
+            } else if parts.len() >= 2 {
+                // Normal case: "M file.txt", "A file.txt", "D file.txt"
+                entries.push(JjDiffSummary {
+                    change_type,
+                    path: parts[1].to_string(),
+                    old_path: None,
+                });
+            }
+        }
+        
+        Ok(entries)
     }
 
     /// Parse log output in JSON format
@@ -631,6 +735,36 @@ A new_file.txt"#;
         let status = status.unwrap();
         assert!(status.has_changes);
         assert!(!status.has_conflicts);
+        assert_eq!(status.modified_files.len(), 1);
+        assert_eq!(status.modified_files[0], "file.txt");
+        assert_eq!(status.added_files.len(), 1);
+        assert_eq!(status.added_files[0], "new_file.txt");
+    }
+
+    #[test]
+    fn test_parse_diff_summary() {
+        let cli = JujutsuCli::new();
+        let output = r#"M file.txt
+A new_file.txt
+D old_file.txt
+R old_name.txt => new_name.txt"#;
+        
+        let summary = cli.parse_diff_summary(output).unwrap();
+        assert_eq!(summary.len(), 4);
+        
+        assert_eq!(summary[0].change_type, "M");
+        assert_eq!(summary[0].path, "file.txt");
+        assert_eq!(summary[0].old_path, None);
+        
+        assert_eq!(summary[1].change_type, "A");
+        assert_eq!(summary[1].path, "new_file.txt");
+        
+        assert_eq!(summary[2].change_type, "D");
+        assert_eq!(summary[2].path, "old_file.txt");
+        
+        assert_eq!(summary[3].change_type, "R");
+        assert_eq!(summary[3].path, "new_name.txt");
+        assert_eq!(summary[3].old_path, Some("old_name.txt".to_string()));
     }
 
     #[test]

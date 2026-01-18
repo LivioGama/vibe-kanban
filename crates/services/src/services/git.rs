@@ -11,9 +11,11 @@ use ts_rs::TS;
 use utils::diff::{Diff, DiffChangeKind, FileDiffDetails, compute_line_change_counts};
 
 mod cli;
+mod jj_cli;
 
 use cli::{ChangeType, StatusDiffEntry, StatusDiffOptions};
 pub use cli::{GitCli, GitCliError};
+pub use jj_cli::{JjCli, JjCliError};
 
 use super::file_ranker::FileStat;
 
@@ -1873,5 +1875,111 @@ impl GitService {
         }
 
         Ok(stats)
+    }
+
+    // ===== Jujutsu (jj) Git Interop Methods =====
+
+    /// Check if a repository is using Jujutsu (jj)
+    pub fn is_jj_repo(&self, repo_path: &Path) -> Result<bool, GitServiceError> {
+        let jj = JjCli::new();
+        jj.is_jj_repo(repo_path).map_err(|e| match e {
+            JjCliError::NotAvailable => {
+                GitServiceError::InvalidRepository("jj not available".to_string())
+            }
+            _ => GitServiceError::InvalidRepository(e.to_string()),
+        })
+    }
+
+    /// Sync jj repository with git remote
+    /// Performs fetch, import, and export operations
+    pub fn jj_sync_with_git(
+        &self,
+        repo_path: &Path,
+        remote: Option<&str>,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.sync_with_git(repo_path, remote)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj sync failed: {e}")))
+    }
+
+    /// Fetch changes from git remote using jj
+    pub fn jj_git_fetch(
+        &self,
+        repo_path: &Path,
+        remote: Option<&str>,
+        branch: Option<&str>,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.git_fetch(repo_path, remote, branch)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj git fetch failed: {e}")))
+    }
+
+    /// Export jj commits to git branches
+    pub fn jj_git_export(&self, repo_path: &Path) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.git_export(repo_path)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj git export failed: {e}")))
+    }
+
+    /// Import git refs into jj
+    pub fn jj_git_import(&self, repo_path: &Path) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.git_import(repo_path)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj git import failed: {e}")))
+    }
+
+    /// Push jj changes to git remote for PR creation
+    pub fn jj_git_push(
+        &self,
+        repo_path: &Path,
+        remote: Option<&str>,
+        branch: Option<&str>,
+        change: Option<&str>,
+        force: bool,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.git_push(repo_path, remote, branch, change, force)
+            .map_err(|e| match e {
+                JjCliError::AuthFailed(msg) => GitServiceError::InvalidRepository(format!("Authentication failed: {msg}")),
+                JjCliError::PushRejected(msg) => GitServiceError::InvalidRepository(format!("Push rejected: {msg}")),
+                _ => GitServiceError::InvalidRepository(format!("jj git push failed: {e}")),
+            })
+    }
+
+    /// Prepare a jj change for PR creation
+    /// Creates a branch and pushes to remote
+    pub fn jj_prepare_for_pr(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        remote: &str,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.prepare_for_pr(repo_path, branch_name, remote)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj prepare for PR failed: {e}")))
+    }
+
+    /// Create a jj branch pointing to a revision
+    pub fn jj_branch_create(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        revision: Option<&str>,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.branch_create(repo_path, branch_name, revision)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj branch create failed: {e}")))
+    }
+
+    /// Set a jj branch to point to a specific revision
+    pub fn jj_branch_set(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        revision: &str,
+    ) -> Result<(), GitServiceError> {
+        let jj = JjCli::new();
+        jj.branch_set(repo_path, branch_name, revision)
+            .map_err(|e| GitServiceError::InvalidRepository(format!("jj branch set failed: {e}")))
     }
 }

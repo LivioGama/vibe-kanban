@@ -1,0 +1,228 @@
+# Jujutsu (jj) Git Interop
+
+This document describes the Jujutsu (jj) Git interoperability features that enable smooth workflows with git-based forges like GitHub and GitLab.
+
+## Overview
+
+Jujutsu (jj) is a modern version control system that provides a Git-compatible backend. This integration allows you to use jj for local development while seamlessly interacting with Git remotes for pull requests and collaboration.
+
+Reference: https://docs.jj-vcs.dev/latest/github/
+
+## Prerequisites
+
+- Install jj: https://github.com/martinvonz/jj#installation
+- Initialize a jj repository with Git backend: `jj git init --git-repo .`
+
+## Core Operations
+
+### 1. Fetch Changes from Remote
+
+Sync changes from Git remote repositories into your jj workspace:
+
+```rust
+use services::GitService;
+
+let git_service = GitService::new();
+
+// Fetch from default remote
+git_service.jj_git_fetch(&repo_path, None, None)?;
+
+// Fetch from specific remote
+git_service.jj_git_fetch(&repo_path, Some("origin"), None)?;
+
+// Fetch specific branch
+git_service.jj_git_fetch(&repo_path, Some("origin"), Some("main"))?;
+```
+
+### 2. Export Changes to Git
+
+Export jj commits to Git branches (ensures Git refs are up to date):
+
+```rust
+// Export all jj changes to Git
+git_service.jj_git_export(&repo_path)?;
+```
+
+This is essential before pushing to remotes, as it updates Git refs to match jj's state.
+
+### 3. Import Git Changes
+
+Import Git refs into jj state (updates jj to match Git):
+
+```rust
+// Import Git refs into jj
+git_service.jj_git_import(&repo_path)?;
+```
+
+### 4. Push Changes to Remote
+
+Push jj changes to Git remote branches for PR creation:
+
+```rust
+// Push specific branch
+git_service.jj_git_push(
+    &repo_path,
+    Some("origin"),      // remote
+    Some("feature-branch"), // branch
+    None,                // change ID
+    false                // force
+)?;
+
+// Push with force
+git_service.jj_git_push(
+    &repo_path,
+    Some("origin"),
+    Some("feature-branch"),
+    None,
+    true  // force push
+)?;
+```
+
+## High-Level Workflows
+
+### Complete Sync with Git
+
+Perform a full sync (import, fetch, export):
+
+```rust
+// Sync with default remote
+git_service.jj_sync_with_git(&repo_path, None)?;
+
+// Sync with specific remote
+git_service.jj_sync_with_git(&repo_path, Some("origin"))?;
+```
+
+This operation:
+1. Imports existing Git refs
+2. Fetches from remote
+3. Imports fetched changes
+4. Exports jj state to Git
+
+### Prepare Change for Pull Request
+
+Streamlined workflow to prepare a change for PR creation:
+
+```rust
+// Create branch, export to git, and push to remote
+git_service.jj_prepare_for_pr(
+    &repo_path,
+    "my-feature-branch",
+    "origin"
+)?;
+```
+
+This operation:
+1. Gets the current change ID
+2. Creates a branch pointing to current change
+3. Exports to Git
+4. Pushes to remote
+
+## Branch Management
+
+### Create Branch
+
+```rust
+// Create branch at current change
+git_service.jj_branch_create(&repo_path, "feature-branch", Some("@"))?;
+
+// Create branch at specific revision
+git_service.jj_branch_create(&repo_path, "feature-branch", Some("abc123"))?;
+```
+
+### Set Branch to Revision
+
+```rust
+git_service.jj_branch_set(
+    &repo_path,
+    "feature-branch",
+    "@"  // or any revision
+)?;
+```
+
+## Repository Detection
+
+### Check if Repository Uses jj
+
+```rust
+let is_jj = git_service.is_jj_repo(&repo_path)?;
+if is_jj {
+    println!("This is a jj repository");
+}
+```
+
+## Error Handling
+
+The jj integration provides specific error types:
+
+- `JjCliError::NotAvailable` - jj executable not found
+- `JjCliError::NotJjRepo` - Directory is not a jj repository
+- `JjCliError::NoGitBackend` - jj repo doesn't have Git backend
+- `JjCliError::AuthFailed` - Authentication failure
+- `JjCliError::PushRejected` - Push rejected (e.g., non-fast-forward)
+- `JjCliError::CommandFailed` - General command failure
+
+## Example: Complete PR Workflow
+
+```rust
+use services::GitService;
+
+let git_service = GitService::new();
+let repo_path = Path::new("/path/to/repo");
+
+// 1. Ensure we're synced with remote
+git_service.jj_sync_with_git(&repo_path, Some("origin"))?;
+
+// 2. Make your changes (using jj commands)
+// ...
+
+// 3. Prepare for PR
+git_service.jj_prepare_for_pr(
+    &repo_path,
+    "feature/my-awesome-feature",
+    "origin"
+)?;
+
+// Now you can create a PR on GitHub/GitLab using the pushed branch
+```
+
+## Best Practices
+
+1. **Always export before pushing**: Ensure `git_export` is called before pushing to remotes
+2. **Import after fetching**: Run `git_import` after fetching to update jj state
+3. **Use prepare_for_pr**: For PR workflows, use the high-level `prepare_for_pr` method
+4. **Check for jj availability**: Use `is_jj_repo()` to detect jj repositories
+5. **Sync regularly**: Use `sync_with_git()` to keep jj and Git in sync
+
+## CLI Reference
+
+The following jj commands are wrapped by this integration:
+
+- `jj git fetch` - Fetch from Git remotes
+- `jj git push` - Push to Git remotes
+- `jj git export` - Export jj changes to Git
+- `jj git import` - Import Git refs to jj
+- `jj branch create` - Create a branch
+- `jj branch set` - Move a branch to a revision
+
+## Troubleshooting
+
+### "jj not available"
+Install jj from: https://github.com/martinvonz/jj#installation
+
+### "No Git backend"
+Initialize repo with Git backend:
+```bash
+jj git init --git-repo .
+```
+
+### "Push rejected"
+Use force push if needed:
+```rust
+git_service.jj_git_push(&repo_path, Some("origin"), Some("branch"), None, true)?;
+```
+
+### Changes not visible in Git
+Run export:
+```rust
+git_service.jj_git_export(&repo_path)?;
+```

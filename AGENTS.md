@@ -44,3 +44,121 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
+
+## Jujutsu (jj) Version Control
+
+### Change-Based Model
+
+Vibe Kanban supports Jujutsu (jj), a next-generation version control system that uses a **change-based model** instead of Git's branch-based model. Key differences:
+
+- **Working copy is a commit**: Your working directory is always a commit; edits are automatically tracked
+- **No staging area**: No need for `git add`; changes are automatically part of the current revision
+- **Stable change IDs**: Changes have persistent IDs that survive rebases
+- **Branches are ephemeral**: Branches are just labels applied when pushing
+- **Non-destructive operations**: Nothing is ever lost; can undo any operation
+
+### Common jj Commands
+
+#### Viewing State
+```bash
+jj st                    # Status of current change (like git status)
+jj log                   # History of changes (like git log)
+jj show                  # Show current change details
+jj diff                  # Show diff of current change
+```
+
+#### Creating & Managing Changes
+```bash
+jj new                   # Create new change on current
+jj new main              # Create new change based on main
+jj new -m "description"  # Create with description
+jj describe -m "msg"     # Set/update description (like git commit)
+jj edit <change-id>      # Switch to different change (like git checkout)
+```
+
+#### Syncing with Git Remotes
+```bash
+jj git fetch                    # Fetch from Git remote
+jj git push --branch <name>     # Push current change as Git branch
+jj git import                   # Import Git refs into jj
+jj git export                   # Export jj changes to Git
+jj rebase -d main               # Rebase current change onto main
+```
+
+#### Modifying Changes
+```bash
+jj squash              # Squash current change into parent
+jj split               # Split current change into multiple
+jj absorb              # Absorb fixes into earlier changes
+```
+
+#### Undo Operations
+```bash
+jj undo                # Undo last operation
+jj op log              # View operation log
+jj op restore <op-id>  # Restore to specific operation
+```
+
+### Simplified Workflows
+
+#### Starting New Work
+```bash
+# Old Git way:
+git checkout main
+git pull
+git checkout -b feature-branch
+# ... make changes ...
+git add .
+git commit -m "Add feature"
+
+# Simplified jj way:
+jj new main -m "Add feature"
+# ... make changes (automatically tracked) ...
+jj git push --branch feature-branch
+```
+
+#### Working on Multiple Tasks
+```bash
+# Create multiple changes based on main
+jj new main -m "Feature A"
+# ... work on A ...
+
+jj new main -m "Feature B"
+# ... work on B ...
+
+# Switch between them
+jj edit <change-a-id>
+jj edit <change-b-id>
+```
+
+#### Updating After Review
+```bash
+# Fetch latest, edit change, make fixes
+jj git fetch
+jj edit <change-id>
+# ... make changes ...
+jj rebase -d main
+jj git push --branch feature --force
+```
+
+### Benefits for AI Agent Work
+
+- **Parallel agents**: Each agent works in isolated change without coordination
+- **No branch conflicts**: Changes coexist independently
+- **Easy context switching**: Jump between tasks instantly
+- **Clear history**: Each change is atomic and traceable
+- **Automatic tracking**: No need to stage files before switching tasks
+
+### Getting Started with jj
+
+1. Install: `brew install jj` or `cargo install --locked jj-cli`
+2. Initialize in repo: `jj init --git` (works alongside existing Git)
+3. Start working: `jj new main -m "Task description"`
+4. Push when ready: `jj git push --branch task-name`
+
+### Learn More
+
+- [jj Workflow Guide](docs/jj-workflow.md) - Detailed workflow patterns
+- [Parallel Agents Guide](docs/parallel-agents.md) - Multi-agent development
+- [Migration from Git](docs/migration-from-git.md) - Transition guide
+- [Jujutsu Integration](docs/integrations/jujutsu.mdx) - Setup and configuration

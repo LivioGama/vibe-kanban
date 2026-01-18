@@ -34,6 +34,18 @@ AI coding agents are increasingly writing the world's code and human engineers n
 
 You can watch a video overview [here](https://youtu.be/TFT3KnZOOAk).
 
+### Enhanced with Jujutsu (jj)
+
+Vibe Kanban optionally integrates with [Jujutsu](https://martinvonz.github.io/jj/), a next-generation version control system that makes multi-agent development even more powerful:
+
+- **Parallel agent work**: Each agent operates in isolated changes without conflicts
+- **Simplified workflows**: No staging area, automatic change tracking
+- **Change-based model**: Work with changes instead of branches
+- **Non-destructive operations**: Every operation can be undone
+- **Git-compatible**: Works alongside your existing Git workflows
+
+Learn more in our [jj workflow guide](docs/jj-workflow.md), [parallel agents guide](docs/parallel-agents.md), or [migration guide](docs/migration-from-git.md).
+
 ## Installation
 
 Make sure you have authenticated with your favourite coding agent. A full list of supported coding agents can be found in the [docs](https://vibekanban.com/docs). Then in your terminal run:
@@ -48,7 +60,7 @@ Please head to the [website](https://vibekanban.com/docs) for the latest documen
 
 ### Optional Integrations
 
-- **[Jujutsu (jj)](docs/integrations/jujutsu.mdx)**: Next-generation version control that works alongside Git. Install with `brew install jj` or `cargo install --locked jj-cli`.
+- **[Jujutsu (jj)](docs/integrations/jujutsu.mdx)**: Next-generation version control that makes multi-agent development seamless. Changes instead of branches, automatic tracking, Git-compatible. Install with `brew install jj` or `cargo install --locked jj-cli`. See [workflow guide](docs/jj-workflow.md) and [migration guide](docs/migration-from-git.md).
 - **GitHub CLI**: For creating pull requests. Install with `brew install gh`.
 - **MCP Integration**: For streamlined task creation with coding agents.
 

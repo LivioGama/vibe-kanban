@@ -990,17 +990,31 @@ impl ContainerService for LocalContainerService {
         Self::create_workspace_config_files(&created_workspace.workspace_dir, &repositories)
             .await?;
 
+        // Determine the container_ref based on workspace type
+        // For single-repo jj workspaces, use the repo path directly
+        // For git workspaces or multi-repo, use the workspace_dir
+        let container_ref = if created_workspace.worktrees.len() == 1 {
+            let worktree = &created_workspace.worktrees[0];
+            if worktree.vcs_type == services::services::workspace_manager::VcsType::Jj {
+                // For jj, the worktree_path is the repo itself
+                worktree.worktree_path.to_string_lossy().to_string()
+            } else {
+                // For git single-repo, still use workspace_dir for consistency
+                created_workspace.workspace_dir.to_string_lossy().to_string()
+            }
+        } else {
+            // For multi-repo workspaces, use workspace_dir
+            created_workspace.workspace_dir.to_string_lossy().to_string()
+        };
+
         Workspace::update_container_ref(
             &self.db.pool,
             workspace.id,
-            &created_workspace.workspace_dir.to_string_lossy(),
+            &container_ref,
         )
         .await?;
 
-        Ok(created_workspace
-            .workspace_dir
-            .to_string_lossy()
-            .to_string())
+        Ok(container_ref)
     }
 
     async fn delete(&self, workspace: &Workspace) -> Result<(), ContainerError> {
@@ -1112,7 +1126,16 @@ impl ContainerService for LocalContainerService {
             };
 
         let repos = WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
-        let repo_names: Vec<String> = repos.iter().map(|r| r.name.clone()).collect();
+        
+        // For single-repo jj workspaces, use "." as the repo name since the workspace IS the repo
+        let repo_names: Vec<String> = if repos.len() == 1 
+            && self.git.is_jj_repo(&repos[0].path).unwrap_or(false) 
+        {
+            vec![".".to_string()]
+        } else {
+            repos.iter().map(|r| r.name.clone()).collect()
+        };
+        
         let repo_context = RepoContext::new(current_dir.clone(), repo_names);
 
         let commit_reminder = self.config.read().await.commit_reminder;

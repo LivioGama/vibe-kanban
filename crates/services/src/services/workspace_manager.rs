@@ -7,6 +7,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::{
+    git::GitService,
     jj_workspace_manager::{JjWorkspaceManager, JjWorkspaceError, RepoJjSession},
     worktree_manager::{WorktreeCleanup, WorktreeError, WorktreeManager},
 };
@@ -40,6 +41,13 @@ pub enum WorkspaceError {
     PartialCreation(String),
 }
 
+/// VCS type for a repository
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VcsType {
+    Git,
+    Jj,
+}
+
 /// Info about a single repo's worktree within a workspace
 #[derive(Debug, Clone)]
 pub struct RepoWorktree {
@@ -47,6 +55,8 @@ pub struct RepoWorktree {
     pub repo_name: String,
     pub source_repo_path: PathBuf,
     pub worktree_path: PathBuf,
+    pub vcs_type: VcsType,
+    pub jj_change_id: Option<String>,
 }
 
 /// A container directory holding worktrees for all project repos
@@ -127,6 +137,17 @@ impl WorkspaceManager {
 
         Ok(())
     }
+
+    /// Detect the VCS type for a repository
+    fn detect_vcs_type(repo_path: &Path) -> VcsType {
+        let git_service = GitService::new();
+        if git_service.is_jj_repo(repo_path).unwrap_or(false) {
+            VcsType::Jj
+        } else {
+            VcsType::Git
+        }
+    }
+
     /// Create a workspace with worktrees for all repositories.
     /// On failure, rolls back any already-created worktrees.
     pub async fn create_workspace(
@@ -149,34 +170,55 @@ impl WorkspaceManager {
         let mut created_worktrees: Vec<RepoWorktree> = Vec::new();
 
         for input in repos {
+            let vcs_type = Self::detect_vcs_type(&input.repo.path);
             let worktree_path = workspace_dir.join(&input.repo.name);
 
             debug!(
-                "Creating worktree for repo '{}' at {}",
+                "Creating workspace for repo '{}' at {} (VCS: {:?})",
                 input.repo.name,
-                worktree_path.display()
+                worktree_path.display(),
+                vcs_type
             );
 
-            match WorktreeManager::create_worktree(
-                &input.repo.path,
-                branch_name,
-                &worktree_path,
-                &input.target_branch,
-                true,
-            )
-            .await
-            {
-                Ok(()) => {
+            let result = match vcs_type {
+                VcsType::Git => {
+                    // Use existing worktree logic
+                    WorktreeManager::create_worktree(
+                        &input.repo.path,
+                        branch_name,
+                        &worktree_path,
+                        &input.target_branch,
+                        true,
+                    )
+                    .await
+                    .map(|_| None)
+                    .map_err(WorkspaceError::Worktree)
+                }
+                VcsType::Jj => {
+                    // Create a new jj change instead of a worktree
+                    Self::create_jj_workspace(&input.repo.path, branch_name).await
+                }
+            };
+
+            match result {
+                Ok(jj_change_id) => {
                     created_worktrees.push(RepoWorktree {
                         repo_id: input.repo.id,
                         repo_name: input.repo.name.clone(),
                         source_repo_path: input.repo.path.clone(),
-                        worktree_path,
+                        worktree_path: if vcs_type == VcsType::Jj {
+                            // For jj, worktree_path is the repo itself
+                            input.repo.path.clone()
+                        } else {
+                            worktree_path
+                        },
+                        vcs_type,
+                        jj_change_id,
                     });
                 }
                 Err(e) => {
                     error!(
-                        "Failed to create worktree for repo '{}': {}. Rolling back...",
+                        "Failed to create workspace for repo '{}': {}. Rolling back...",
                         input.repo.name, e
                     );
 
@@ -192,7 +234,7 @@ impl WorkspaceManager {
                     }
 
                     return Err(WorkspaceError::PartialCreation(format!(
-                        "Failed to create worktree for repo '{}': {}",
+                        "Failed to create workspace for repo '{}': {}",
                         input.repo.name, e
                     )));
                 }
@@ -231,19 +273,56 @@ impl WorkspaceManager {
         }
 
         for repo in repos {
-            let worktree_path = workspace_dir.join(&repo.name);
+            let vcs_type = Self::detect_vcs_type(&repo.path);
+            
+            match vcs_type {
+                VcsType::Git => {
+                    let worktree_path = workspace_dir.join(&repo.name);
 
-            debug!(
-                "Ensuring worktree exists for repo '{}' at {}",
-                repo.name,
-                worktree_path.display()
-            );
+                    debug!(
+                        "Ensuring worktree exists for repo '{}' at {}",
+                        repo.name,
+                        worktree_path.display()
+                    );
 
-            WorktreeManager::ensure_worktree_exists(&repo.path, branch_name, &worktree_path)
-                .await?;
+                    WorktreeManager::ensure_worktree_exists(&repo.path, branch_name, &worktree_path)
+                        .await?;
+                }
+                VcsType::Jj => {
+                    // For jj repos, we don't need to ensure anything exists
+                    // The workspace is the repo itself
+                    debug!(
+                        "Jj repo '{}' workspace is the repo itself at {}",
+                        repo.name,
+                        repo.path.display()
+                    );
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Create a jj workspace by creating a new change
+    async fn create_jj_workspace(
+        repo_path: &Path,
+        branch_name: &str,
+    ) -> Result<Option<String>, WorkspaceError> {
+        let jj_manager = JjWorkspaceManager::new();
+        let session_id = Uuid::new_v4(); // Generate a session ID for tracking
+        let description = Some(format!("workspace: {}", branch_name));
+
+        let change_id = jj_manager
+            .create_session(repo_path, session_id, description.as_deref())
+            .map_err(WorkspaceError::JjWorkspace)?;
+
+        info!(
+            "Created jj change {} for workspace in repo {}",
+            change_id,
+            repo_path.display()
+        );
+
+        Ok(Some(change_id))
     }
 
     /// Clean up all worktrees in a workspace
@@ -253,15 +332,25 @@ impl WorkspaceManager {
     ) -> Result<(), WorkspaceError> {
         info!("Cleaning up workspace at {}", workspace_dir.display());
 
-        let cleanup_data: Vec<WorktreeCleanup> = repos
-            .iter()
-            .map(|repo| {
-                let worktree_path = workspace_dir.join(&repo.name);
-                WorktreeCleanup::new(worktree_path, Some(repo.path.clone()))
-            })
-            .collect();
-
-        WorktreeManager::batch_cleanup_worktrees(&cleanup_data).await?;
+        for repo in repos {
+            let vcs_type = Self::detect_vcs_type(&repo.path);
+            
+            match vcs_type {
+                VcsType::Git => {
+                    let worktree_path = workspace_dir.join(&repo.name);
+                    let cleanup = WorktreeCleanup::new(worktree_path, Some(repo.path.clone()));
+                    WorktreeManager::cleanup_worktree(&cleanup).await?;
+                }
+                VcsType::Jj => {
+                    // For jj, we don't need to clean up worktrees
+                    // The change will remain in the repo history
+                    debug!(
+                        "Skipping worktree cleanup for jj repo '{}' (changes remain in history)",
+                        repo.name
+                    );
+                }
+            }
+        }
 
         // Remove the workspace directory itself
         if workspace_dir.exists()
@@ -343,16 +432,32 @@ impl WorkspaceManager {
     /// Helper to cleanup worktrees during rollback
     async fn cleanup_created_worktrees(worktrees: &[RepoWorktree]) {
         for worktree in worktrees {
-            let cleanup = WorktreeCleanup::new(
-                worktree.worktree_path.clone(),
-                Some(worktree.source_repo_path.clone()),
-            );
+            match worktree.vcs_type {
+                VcsType::Git => {
+                    let cleanup = WorktreeCleanup::new(
+                        worktree.worktree_path.clone(),
+                        Some(worktree.source_repo_path.clone()),
+                    );
 
-            if let Err(e) = WorktreeManager::cleanup_worktree(&cleanup).await {
-                error!(
-                    "Failed to cleanup worktree '{}' during rollback: {}",
-                    worktree.repo_name, e
-                );
+                    if let Err(e) = WorktreeManager::cleanup_worktree(&cleanup).await {
+                        error!(
+                            "Failed to cleanup worktree '{}' during rollback: {}",
+                            worktree.repo_name, e
+                        );
+                    }
+                }
+                VcsType::Jj => {
+                    // For jj, abandon the change if we have a change ID
+                    if let Some(change_id) = &worktree.jj_change_id {
+                        let jj = JujutsuCli::new();
+                        if let Err(e) = jj.abandon(&worktree.source_repo_path, change_id) {
+                            error!(
+                                "Failed to abandon jj change '{}' for '{}' during rollback: {}",
+                                change_id, worktree.repo_name, e
+                            );
+                        }
+                    }
+                }
             }
         }
     }

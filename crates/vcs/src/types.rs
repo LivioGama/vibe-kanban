@@ -134,28 +134,26 @@ pub enum FileStatusKind {
 }
 
 /// Information about a conflict
+///
+/// In jj's model, conflicts are first-class and can be committed.
+/// The operation type is less important than the conflict content itself.
 #[derive(Debug, Clone)]
 pub struct ConflictInfo {
     pub path: String,
-    pub operation: ConflictOperation,
     pub sides: ConflictSides,
 }
 
-/// Type of operation that caused a conflict
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConflictOperation {
-    Merge,
-    Rebase,
-    CherryPick,
-    Revert,
-}
-
-/// The conflicting sides of a merge/rebase
+/// The conflicting sides in a 3-way merge
+///
+/// This represents jj's conflict model where conflicts have:
+/// - A base (common ancestor)
+/// - Ours (left side)
+/// - Theirs (right side)
 #[derive(Debug, Clone)]
 pub struct ConflictSides {
+    pub base: Option<ChangeId>,
     pub ours: ChangeId,
     pub theirs: ChangeId,
-    pub base: Option<ChangeId>,
 }
 
 /// Options for creating a change

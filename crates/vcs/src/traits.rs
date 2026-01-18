@@ -141,21 +141,27 @@ pub trait VcsDiff: VcsRepository {
 }
 
 /// Conflict detection and resolution
+///
+/// Following jj's model: conflicts are first-class and can be committed.
+/// No need to track operation state - just check for conflicts and resolve.
 pub trait VcsConflicts: VcsRepository {
-    /// Check if there are any conflicts
+    /// Check if there are any conflicts in the working copy
     fn has_conflicts(&self) -> Result<bool, VcsError>;
 
-    /// List all conflicted files
+    /// List all conflicted files with 3-way merge information
     fn list_conflicts(&self) -> Result<Vec<ConflictInfo>, VcsError>;
 
-    /// Mark a conflict as resolved
+    /// Mark a conflict as resolved for a specific file
+    ///
+    /// In jj: automatically handled when file is edited
+    /// In git: needs explicit staging (git add)
     fn resolve_conflict(&self, path: &Path) -> Result<(), VcsError>;
 
-    /// Abort ongoing operation (merge/rebase)
+    /// Abort in-progress operation and return to clean state
+    ///
+    /// In jj: rarely needed (conflicts are first-class)
+    /// In git: aborts merge/rebase/cherry-pick
     fn abort_operation(&self) -> Result<(), VcsError>;
-
-    /// Get the type of ongoing operation, if any
-    fn ongoing_operation(&self) -> Result<Option<ConflictOperation>, VcsError>;
 }
 
 /// Combined trait representing a full VCS backend

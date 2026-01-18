@@ -48,16 +48,6 @@ pub struct GitService {}
 // their contents omitted from the diff stream to avoid UI crashes.
 const MAX_INLINE_DIFF_BYTES: usize = 2 * 1024 * 1024; // ~2MB
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-#[ts(rename_all = "snake_case")]
-pub enum ConflictOp {
-    Rebase,
-    Merge,
-    CherryPick,
-    Revert,
-}
-
 #[derive(Debug, Serialize, TS)]
 pub struct GitBranch {
     pub name: String,
@@ -1484,29 +1474,6 @@ impl GitService {
         git.is_rebase_in_progress(worktree_path).map_err(|e| {
             GitServiceError::InvalidRepository(format!("git rebase state check failed: {e}"))
         })
-    }
-
-    pub fn detect_conflict_op(
-        &self,
-        worktree_path: &Path,
-    ) -> Result<Option<ConflictOp>, GitServiceError> {
-        let git = GitCli::new();
-        if git.is_rebase_in_progress(worktree_path).unwrap_or(false) {
-            return Ok(Some(ConflictOp::Rebase));
-        }
-        if git.is_merge_in_progress(worktree_path).unwrap_or(false) {
-            return Ok(Some(ConflictOp::Merge));
-        }
-        if git
-            .is_cherry_pick_in_progress(worktree_path)
-            .unwrap_or(false)
-        {
-            return Ok(Some(ConflictOp::CherryPick));
-        }
-        if git.is_revert_in_progress(worktree_path).unwrap_or(false) {
-            return Ok(Some(ConflictOp::Revert));
-        }
-        Ok(None)
     }
 
     /// List conflicted (unmerged) files in the worktree.

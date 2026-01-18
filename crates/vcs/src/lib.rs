@@ -44,7 +44,7 @@ pub use traits::{
 };
 pub use types::{
     BranchInfo, BranchOrChange, ChangeFilter, ChangeId, ChangeInfo, ConflictInfo,
-    ConflictOperation, ConflictSides, CreateChangeOptions, DiffContent, FetchOptions,
+    ConflictSides, CreateChangeOptions, DiffContent, FetchOptions,
     FileChangeType, FileDiff, FileStatus, FileStatusKind, HeadInfo, PushOptions,
 };
 

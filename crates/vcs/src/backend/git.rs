@@ -748,8 +748,6 @@ impl VcsConflicts for GitRepository {
             return Ok(Vec::new());
         }
 
-        let operation = self.ongoing_operation()?.unwrap_or(ConflictOperation::Merge);
-
         let mut conflicts = Vec::new();
         let conflict_iter = index.conflicts().map_err(VcsError::backend)?;
 
@@ -761,16 +759,12 @@ impl VcsConflicts for GitRepository {
                     let path = String::from_utf8_lossy(&ours.path).to_string();
 
                     let sides = ConflictSides {
+                        base: conflict.ancestor.map(|a| Self::oid_to_change_id(a.id)),
                         ours: Self::oid_to_change_id(ours.id),
                         theirs: Self::oid_to_change_id(theirs.id),
-                        base: conflict.ancestor.map(|a| Self::oid_to_change_id(a.id)),
                     };
 
-                    conflicts.push(ConflictInfo {
-                        path,
-                        operation,
-                        sides,
-                    });
+                    conflicts.push(ConflictInfo { path, sides });
                 }
             }
         }
@@ -792,7 +786,11 @@ impl VcsConflicts for GitRepository {
 
     fn abort_operation(&self) -> Result<(), VcsError> {
         match self.repo.state() {
-            git2::RepositoryState::Merge => {
+            git2::RepositoryState::Merge
+            | git2::RepositoryState::CherryPick
+            | git2::RepositoryState::CherryPickSequence
+            | git2::RepositoryState::Revert
+            | git2::RepositoryState::RevertSequence => {
                 self.repo.cleanup_state().map_err(VcsError::backend)?;
             }
             git2::RepositoryState::Rebase
@@ -804,32 +802,10 @@ impl VcsConflicts for GitRepository {
                     "Rebase abort requires CLI".into(),
                 ));
             }
-            git2::RepositoryState::CherryPick | git2::RepositoryState::CherryPickSequence => {
-                self.repo.cleanup_state().map_err(VcsError::backend)?;
-            }
-            git2::RepositoryState::Revert | git2::RepositoryState::RevertSequence => {
-                self.repo.cleanup_state().map_err(VcsError::backend)?;
-            }
             _ => {}
         }
 
         Ok(())
-    }
-
-    fn ongoing_operation(&self) -> Result<Option<ConflictOperation>, VcsError> {
-        match self.repo.state() {
-            git2::RepositoryState::Merge => Ok(Some(ConflictOperation::Merge)),
-            git2::RepositoryState::Rebase
-            | git2::RepositoryState::RebaseInteractive
-            | git2::RepositoryState::RebaseMerge => Ok(Some(ConflictOperation::Rebase)),
-            git2::RepositoryState::CherryPick | git2::RepositoryState::CherryPickSequence => {
-                Ok(Some(ConflictOperation::CherryPick))
-            }
-            git2::RepositoryState::Revert | git2::RepositoryState::RevertSequence => {
-                Ok(Some(ConflictOperation::Revert))
-            }
-            _ => Ok(None),
-        }
     }
 }
 

@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use services::services::{
     container::ContainerService,
     file_search::SearchQuery,
-    git::{ConflictOp, GitCliError, GitServiceError},
+    git::{GitCliError, GitServiceError},
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
@@ -72,11 +72,14 @@ pub struct AbortConflictsRequest {
     pub repo_id: Uuid,
 }
 
+/// Git operation errors following jj's simpler model
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(tag = "type", rename_all = "snake_case")]
 pub enum GitOperationError {
-    MergeConflicts { message: String, op: ConflictOp },
+    /// Merge conflicts present (jj allows committing with conflicts)
+    MergeConflicts { message: String },
+    /// Rebase in progress (git-specific state)
     RebaseInProgress,
 }
 
@@ -695,9 +698,8 @@ pub struct BranchStatus {
     pub merges: Vec<Merge>,
     /// True if a `git rebase` is currently in progress in this worktree
     pub is_rebase_in_progress: bool,
-    /// Current conflict operation if any
-    pub conflict_op: Option<ConflictOp>,
     /// List of files currently in conflicted (unmerged) state
+    /// In jj's model, conflicts are first-class and can be committed
     pub conflicted_files: Vec<String>,
 }
 
@@ -759,7 +761,7 @@ pub async fn get_task_attempt_branch_status(
             .ok()
             .map(|h| h.oid);
 
-        let (is_rebase_in_progress, conflicted_files, conflict_op) = {
+        let (is_rebase_in_progress, conflicted_files) = {
             let in_rebase = deployment
                 .git()
                 .is_rebase_in_progress(&worktree_path)
@@ -768,15 +770,7 @@ pub async fn get_task_attempt_branch_status(
                 .git()
                 .get_conflicted_files(&worktree_path)
                 .unwrap_or_default();
-            let op = if conflicts.is_empty() {
-                None
-            } else {
-                deployment
-                    .git()
-                    .detect_conflict_op(&worktree_path)
-                    .unwrap_or(None)
-            };
-            (in_rebase, conflicts, op)
+            (in_rebase, conflicts)
         };
 
         let (uncommitted_count, untracked_count) =
@@ -845,7 +839,6 @@ pub async fn get_task_attempt_branch_status(
                 merges: repo_merges,
                 target_branch_name: target_branch,
                 is_rebase_in_progress,
-                conflict_op,
                 conflicted_files,
             },
         });
@@ -1151,10 +1144,7 @@ pub async fn rebase_task_attempt(
                 (),
                 GitOperationError,
             >::error_with_data(
-                GitOperationError::MergeConflicts {
-                    message: msg,
-                    op: ConflictOp::Rebase,
-                },
+                GitOperationError::MergeConflicts { message: msg },
             ))),
             GitServiceError::RebaseInProgress => Ok(ResponseJson(ApiResponse::<
                 (),

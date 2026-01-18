@@ -404,6 +404,26 @@ impl JujutsuCli {
         Ok(())
     }
 
+    /// Squash changes from one revision into another
+    /// Uses jj's --from/--into pattern for flexible squashing
+    pub fn squash_from_into(
+        &self,
+        repo_path: &Path,
+        from: &str,
+        into: &str,
+        message: Option<&str>,
+    ) -> Result<(), JujutsuCliError> {
+        let mut args = vec!["squash", "--from", from, "--into", into];
+        
+        if let Some(msg) = message {
+            args.push("-m");
+            args.push(msg);
+        }
+        
+        self.jj(repo_path, args)?;
+        Ok(())
+    }
+
     /// Edit a change (move working copy to a specific change)
     pub fn edit(&self, repo_path: &Path, revision: &str) -> Result<(), JujutsuCliError> {
         self.jj(repo_path, ["edit", revision])?;
@@ -448,8 +468,8 @@ impl JujutsuCli {
 
 // Private implementation methods
 impl JujutsuCli {
-    /// Ensure `jj` is available on PATH
-    fn ensure_available(&self) -> Result<(), JujutsuCliError> {
+    /// Ensure `jj` is available on PATH (public for checking availability)
+    pub fn ensure_available(&self) -> Result<(), JujutsuCliError> {
         let jj = resolve_executable_path_blocking("jj").ok_or(JujutsuCliError::NotAvailable)?;
         let out = Command::new(&jj)
             .arg("--version")

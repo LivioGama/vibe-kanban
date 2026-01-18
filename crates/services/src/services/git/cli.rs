@@ -569,7 +569,8 @@ impl GitCli {
     }
 
     /// Checkout base branch, squash-merge from_branch, and commit with message. Returns new HEAD sha.
-    pub fn merge_squash_commit(
+    /// Git-specific implementation (fallback when jj is not available)
+    pub fn merge_squash_commit_git(
         &self,
         repo_path: &Path,
         base_branch: &str,

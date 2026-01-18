@@ -18,6 +18,7 @@ pub use cli::{GitCli, GitCliError};
 pub use jj_cli::{JjCli, JjCliError};
 
 use super::file_ranker::FileStat;
+use super::jj::JujutsuCli;
 
 #[derive(Debug, Error)]
 pub enum GitServiceError {
@@ -25,6 +26,8 @@ pub enum GitServiceError {
     Git(#[from] GitError),
     #[error(transparent)]
     GitCLI(#[from] GitCliError),
+    #[error(transparent)]
+    JjCLI(#[from] super::jj::JujutsuCliError),
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error("Invalid repository: {0}")]
@@ -791,7 +794,57 @@ impl GitService {
     }
 
     /// Merge changes from a task branch into the base branch.
+    /// Uses jj's native squash when available (simpler, cleaner),
+    /// falls back to Git merge when jj is not available or repo is not jj-enabled.
     pub fn merge_changes(
+        &self,
+        base_worktree_path: &Path,
+        task_worktree_path: &Path,
+        task_branch_name: &str,
+        base_branch_name: &str,
+        commit_message: &str,
+    ) -> Result<String, GitServiceError> {
+        // Try jj first if available and repo is jj-enabled
+        let jj_cli = JujutsuCli::new();
+        if let Ok(true) = self.is_jj_enabled(base_worktree_path) {
+            // Use jj's native squash - way simpler!
+            // No worktree checkout dance, no in-memory merge fallback, direct change manipulation
+            jj_cli.squash_from_into(
+                base_worktree_path,
+                task_branch_name,
+                base_branch_name,
+                Some(commit_message),
+            )?;
+            
+            // Get the resulting commit SHA from the base branch
+            let commit_sha = self.get_branch_oid(base_worktree_path, base_branch_name)?;
+            return Ok(commit_sha);
+        }
+        
+        // Fall back to Git implementation when jj is not available
+        self.merge_changes_git(
+            base_worktree_path,
+            task_worktree_path,
+            task_branch_name,
+            base_branch_name,
+            commit_message,
+        )
+    }
+
+    /// Check if a repository is jj-enabled (has .jj directory and jj is available)
+    fn is_jj_enabled(&self, repo_path: &Path) -> Result<bool, GitServiceError> {
+        let jj_cli = JujutsuCli::new();
+        
+        // Check if jj executable is available
+        jj_cli.ensure_available()
+            .map_err(|_| GitServiceError::InvalidRepository("jj not available".to_string()))?;
+        
+        // Check if repo has .jj directory
+        Ok(repo_path.join(".jj").exists())
+    }
+
+    /// Git-based merge implementation (fallback when jj is not available)
+    fn merge_changes_git(
         &self,
         base_worktree_path: &Path,
         task_worktree_path: &Path,
@@ -836,7 +889,7 @@ impl GitService {
                 // Use CLI merge in base context
                 self.ensure_cli_commit_identity(&base_checkout_path)?;
                 let sha = git_cli
-                    .merge_squash_commit(
+                    .merge_squash_commit_git(
                         &base_checkout_path,
                         base_branch_name,
                         task_branch_name,
@@ -867,7 +920,7 @@ impl GitService {
 
                 // Create the squash commit in-memory (no checkout) and update the base branch ref
                 let signature = self.signature_with_fallback(&task_repo)?;
-                let squash_commit_id = self.perform_squash_merge(
+                let squash_commit_id = self.perform_squash_merge_git(
                     &task_repo,
                     &base_commit,
                     &task_commit,
@@ -889,6 +942,51 @@ impl GitService {
                 Ok(squash_commit_id.to_string())
             }
         }
+    }
+
+    /// In-memory merge implementation for Git (used when base branch is not checked out)
+    fn perform_squash_merge_git(
+        &self,
+        repo: &Repository,
+        base_commit: &git2::Commit,
+        task_commit: &git2::Commit,
+        signature: &git2::Signature,
+        commit_message: &str,
+        base_branch_name: &str,
+    ) -> Result<git2::Oid, GitServiceError> {
+        // In-memory merge to detect conflicts without touching the working tree
+        let mut merge_opts = git2::MergeOptions::new();
+        // Safety and correctness options
+        merge_opts.find_renames(true); // improve rename handling
+        merge_opts.fail_on_conflict(true); // bail out instead of generating conflicted index
+        let mut index = repo.merge_commits(base_commit, task_commit, Some(&merge_opts))?;
+
+        // If there are conflicts, return an error
+        if index.has_conflicts() {
+            return Err(GitServiceError::MergeConflicts(
+                "Merge failed due to conflicts. Please resolve conflicts manually.".to_string(),
+            ));
+        }
+
+        // Write the merged tree back to the repository
+        let tree_id = index.write_tree_to(repo)?;
+        let tree = repo.find_tree(tree_id)?;
+
+        // Create a squash commit: use merged tree with base_commit as sole parent
+        let squash_commit_id = repo.commit(
+            None,           // Don't update any reference yet
+            signature,      // Author
+            signature,      // Committer
+            commit_message, // Custom message
+            &tree,          // Merged tree content
+            &[base_commit], // Single parent: base branch commit
+        )?;
+
+        // Update the base branch reference to point to the new commit
+        let refname = format!("refs/heads/{base_branch_name}");
+        repo.reference(&refname, squash_commit_id, true, "Squash merge")?;
+
+        Ok(squash_commit_id)
     }
     fn get_branch_status_inner(
         &self,
@@ -1292,50 +1390,6 @@ impl GitService {
     }
 
     /// Perform a squash merge of task branch into base branch, but fail on conflicts
-    fn perform_squash_merge(
-        &self,
-        repo: &Repository,
-        base_commit: &git2::Commit,
-        task_commit: &git2::Commit,
-        signature: &git2::Signature,
-        commit_message: &str,
-        base_branch_name: &str,
-    ) -> Result<git2::Oid, GitServiceError> {
-        // In-memory merge to detect conflicts without touching the working tree
-        let mut merge_opts = git2::MergeOptions::new();
-        // Safety and correctness options
-        merge_opts.find_renames(true); // improve rename handling
-        merge_opts.fail_on_conflict(true); // bail out instead of generating conflicted index
-        let mut index = repo.merge_commits(base_commit, task_commit, Some(&merge_opts))?;
-
-        // If there are conflicts, return an error
-        if index.has_conflicts() {
-            return Err(GitServiceError::MergeConflicts(
-                "Merge failed due to conflicts. Please resolve conflicts manually.".to_string(),
-            ));
-        }
-
-        // Write the merged tree back to the repository
-        let tree_id = index.write_tree_to(repo)?;
-        let tree = repo.find_tree(tree_id)?;
-
-        // Create a squash commit: use merged tree with base_commit as sole parent
-        let squash_commit_id = repo.commit(
-            None,           // Don't update any reference yet
-            signature,      // Author
-            signature,      // Committer
-            commit_message, // Custom message
-            &tree,          // Merged tree content
-            &[base_commit], // Single parent: base branch commit
-        )?;
-
-        // Update the base branch reference to point to the new commit
-        let refname = format!("refs/heads/{base_branch_name}");
-        repo.reference(&refname, squash_commit_id, true, "Squash merge")?;
-
-        Ok(squash_commit_id)
-    }
-
     /// Rebase a worktree branch onto a new base
     // DEPRECATED: Git rebase is not needed with jj's change model
     // jj handles change evolution automatically without explicit rebase operations.

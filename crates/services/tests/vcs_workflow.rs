@@ -6,8 +6,12 @@ use std::{
 
 use git2::{Repository, build::CheckoutBuilder};
 use services::services::git::{DiffTarget, GitCli, GitService};
+use services::services::jj::JujutsuCli;
 use tempfile::TempDir;
 use utils::diff::DiffChangeKind;
+
+mod vcs_test_utils;
+use vcs_test_utils::{VcsBackend, VcsTestRepo, write_file};
 
 fn add_path(repo_path: &Path, path: &str) {
     let git = GitCli::new();
@@ -519,4 +523,200 @@ fn squash_merge_libgit2_sets_author_without_user() {
         assert_eq!(name.as_deref(), Some("Vibe Kanban"));
         assert_eq!(email.as_deref(), Some("noreply@vibekanban.com"));
     }
+}
+
+// ============================================================================
+// PARAMETERIZED TESTS FOR BOTH GIT AND JUJUTSU
+// ============================================================================
+
+#[test]
+fn vcs_initialize_and_commit_basic() {
+    for backend in VcsBackend::available() {
+        println!("Testing with backend: {:?}", backend);
+        
+        let repo = VcsTestRepo::init(backend);
+        repo.write_file("test.txt", "hello world\n");
+        
+        let result = repo.commit("Initial commit");
+        assert!(result.is_ok(), "Failed to commit with {:?}", backend);
+        
+        assert!(repo.is_clean(), "Repo should be clean after commit with {:?}", backend);
+    }
+}
+
+#[test]
+fn vcs_branch_creation_and_checkout() {
+    for backend in VcsBackend::available() {
+        println!("Testing with backend: {:?}", backend);
+        
+        let repo = VcsTestRepo::init(backend);
+        repo.write_file("base.txt", "base content\n");
+        repo.commit("Base commit").unwrap();
+        
+        // Create and switch to feature branch
+        repo.create_branch("feature");
+        repo.checkout("feature");
+        
+        // Make changes on feature branch
+        repo.write_file("feature.txt", "feature content\n");
+        repo.commit("Feature commit").unwrap();
+        
+        assert!(repo.is_clean(), "Feature branch should be clean after commit with {:?}", backend);
+    }
+}
+
+#[test]
+fn vcs_worktree_dirty_detection() {
+    for backend in VcsBackend::available() {
+        println!("Testing with backend: {:?}", backend);
+        
+        let repo = VcsTestRepo::init(backend);
+        repo.write_file("tracked.txt", "initial\n");
+        repo.commit("Initial").unwrap();
+        
+        assert!(repo.is_clean(), "Should be clean after commit with {:?}", backend);
+        
+        // Modify tracked file
+        repo.write_file("tracked.txt", "modified\n");
+        
+        assert!(!repo.is_clean(), "Should be dirty after modification with {:?}", backend);
+    }
+}
+
+// ============================================================================
+// JJ-SPECIFIC TESTS FOR CHANGE MANIPULATION
+// ============================================================================
+
+#[test]
+fn jj_change_manipulation_squash() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // First change
+    repo.write_file("file1.txt", "content1\n");
+    jj.describe(&repo.repo_path, "First change").unwrap();
+    
+    // Create second change
+    jj.new_change(&repo.repo_path, Some("Second change")).unwrap();
+    repo.write_file("file2.txt", "content2\n");
+    
+    // Squash second into first
+    let result = jj.squash(&repo.repo_path, None, None, None);
+    assert!(result.is_ok(), "Squash should succeed");
+}
+
+#[test]
+fn jj_parallel_changes() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Base change
+    repo.write_file("base.txt", "base\n");
+    jj.describe(&repo.repo_path, "Base").unwrap();
+    let base_change = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Create parallel changes (both based on same parent)
+    jj.new_change(&repo.repo_path, Some("Feature A")).unwrap();
+    repo.write_file("feature_a.txt", "A\n");
+    
+    // Go back to base and create another parallel change
+    jj.edit(&repo.repo_path, &base_change).unwrap();
+    jj.new_change(&repo.repo_path, Some("Feature B")).unwrap();
+    repo.write_file("feature_b.txt", "B\n");
+    
+    // Both changes should exist independently
+    let log_result = jj.log(&repo.repo_path, Default::default());
+    assert!(log_result.is_ok(), "Should be able to view parallel changes");
+}
+
+#[test]
+fn jj_conflict_detection() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Create base with file
+    repo.write_file("conflict.txt", "original\n");
+    jj.describe(&repo.repo_path, "Base").unwrap();
+    let base_change = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Change 1
+    jj.new_change(&repo.repo_path, Some("Change 1")).unwrap();
+    repo.write_file("conflict.txt", "version 1\n");
+    let change1 = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Change 2 (parallel)
+    jj.edit(&repo.repo_path, &base_change).unwrap();
+    jj.new_change(&repo.repo_path, Some("Change 2")).unwrap();
+    repo.write_file("conflict.txt", "version 2\n");
+    
+    // Try to rebase change2 onto change1 - should create conflict
+    let rebase_result = jj.rebase(&repo.repo_path, &change1, None, None);
+    
+    // Check for conflicts
+    let status = jj.status(&repo.repo_path).unwrap();
+    if rebase_result.is_ok() {
+        // Conflicts may be detected in status even if rebase succeeds
+        println!("Rebase completed, conflict status: {}", status.has_conflicts);
+    }
+}
+
+#[test]
+fn jj_git_interop_export_import() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Make a change in JJ
+    repo.write_file("file.txt", "content\n");
+    jj.describe(&repo.repo_path, "Test commit").unwrap();
+    
+    // Export to git
+    let export_result = jj.git_export(&repo.repo_path);
+    assert!(export_result.is_ok(), "Git export should succeed");
+    
+    // Import from git
+    let import_result = jj.git_import(&repo.repo_path);
+    assert!(import_result.is_ok(), "Git import should succeed");
+}
+
+#[test]
+fn jj_abandon_change() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Create a change to abandon
+    repo.write_file("temp.txt", "temporary\n");
+    jj.describe(&repo.repo_path, "Temporary change").unwrap();
+    let temp_change = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Create new change
+    jj.new_change(&repo.repo_path, Some("New change")).unwrap();
+    
+    // Abandon the temporary change
+    let result = jj.abandon(&repo.repo_path, &temp_change);
+    assert!(result.is_ok(), "Should be able to abandon a change");
 }

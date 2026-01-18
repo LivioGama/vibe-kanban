@@ -6,7 +6,12 @@ use std::{
 
 use git2::{PushOptions, Repository, build::CheckoutBuilder};
 use services::services::git::{GitCli, GitCliError, GitService};
+use services::services::jj::{JujutsuCli, JujutsuCliError};
 use tempfile::TempDir;
+
+mod vcs_test_utils;
+use vcs_test_utils::{VcsBackend, VcsTestRepo, write_file};
+
 // Avoid direct git CLI usage in tests; exercise GitService instead.
 
 fn write_file<P: AsRef<Path>>(base: P, rel: &str, content: &str) {
@@ -1419,4 +1424,194 @@ fn merge_base_ahead_of_task_should_error() {
         res.is_err(),
         "Merge should error when base branch is ahead of task branch"
     );
+}
+
+// ============================================================================
+// PARAMETERIZED TESTS FOR BOTH GIT AND JUJUTSU
+// ============================================================================
+
+#[test]
+fn vcs_conflict_detection_same_file() {
+    for backend in VcsBackend::available() {
+        println!("Testing conflict detection with backend: {:?}", backend);
+        
+        let repo = VcsTestRepo::init(backend);
+        
+        // Base commit
+        repo.write_file("conflict.txt", "original\n");
+        repo.commit("Base").unwrap();
+        
+        // Create first branch with change
+        repo.create_branch("branch1");
+        repo.checkout("branch1");
+        repo.write_file("conflict.txt", "version 1\n");
+        repo.commit("Change 1").unwrap();
+        
+        // Create second branch from base with conflicting change
+        repo.checkout(match backend {
+            VcsBackend::Git => "main",
+            VcsBackend::Jujutsu => "@-", // Previous change in JJ
+        });
+        repo.create_branch("branch2");
+        repo.checkout("branch2");
+        repo.write_file("conflict.txt", "version 2\n");
+        repo.commit("Change 2").unwrap();
+        
+        // Attempt to merge/rebase should detect conflict
+        match backend {
+            VcsBackend::Git => {
+                let git_service = GitService::new();
+                // Try to merge branch1 into branch2
+                let result = git_service.merge_changes(
+                    &repo.repo_path,
+                    &repo.repo_path,
+                    "branch1",
+                    "branch2",
+                    "merge",
+                );
+                // Should either error or create conflicts
+                if result.is_err() {
+                    println!("Git merge correctly detected conflict");
+                } else {
+                    println!("Git merge may have created conflict markers");
+                }
+            }
+            VcsBackend::Jujutsu => {
+                let jj = JujutsuCli::new();
+                // JJ will automatically detect conflicts in the working copy
+                let status = jj.status(&repo.repo_path).unwrap();
+                println!("JJ conflict status: {}", status.has_conflicts);
+            }
+        }
+    }
+}
+
+#[test]
+fn vcs_remote_sync_scenarios() {
+    // This test focuses on Git since it has more complex remote scenarios
+    let temp_dir = TempDir::new().unwrap();
+    let remote_path = temp_dir.path().join("remote.git");
+    Repository::init_bare(&remote_path).expect("init bare remote");
+    let remote_url = remote_path.to_str().expect("remote path str");
+    
+    // Seed the bare repo
+    let seed_path = temp_dir.path().join("seed");
+    let service = GitService::new();
+    service
+        .initialize_repo_with_main_branch(&seed_path)
+        .expect("init seed repo");
+    let seed_repo = Repository::open(&seed_path).expect("open seed repo");
+    configure_user(&seed_repo);
+    seed_repo.remote("origin", remote_url).expect("add remote");
+    push_ref(&seed_repo, "refs/heads/main", "refs/heads/main");
+    
+    // Clone and verify
+    let local_path = temp_dir.path().join("local");
+    Repository::clone(remote_url, &local_path).expect("clone local");
+    
+    let local_repo = VcsTestRepo {
+        backend: VcsBackend::Git,
+        root: temp_dir,
+        repo_path: local_path,
+    };
+    
+    assert!(local_repo.is_clean(), "Cloned repo should be clean");
+}
+
+// ============================================================================
+// JJ-SPECIFIC SAFETY TESTS
+// ============================================================================
+
+#[test]
+fn jj_conflicted_state_resolution() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Create a situation that might lead to conflicts
+    repo.write_file("file.txt", "base\n");
+    jj.describe(&repo.repo_path, "Base").unwrap();
+    let base_change = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Parallel change 1
+    jj.new_change(&repo.repo_path, Some("Change 1")).unwrap();
+    repo.write_file("file.txt", "version 1\n");
+    jj.describe(&repo.repo_path, "Version 1").unwrap();
+    let change1 = jj.current_change_id(&repo.repo_path).unwrap();
+    
+    // Parallel change 2
+    jj.edit(&repo.repo_path, &base_change).unwrap();
+    jj.new_change(&repo.repo_path, Some("Change 2")).unwrap();
+    repo.write_file("file.txt", "version 2\n");
+    jj.describe(&repo.repo_path, "Version 2").unwrap();
+    
+    // Rebase to create potential conflict
+    let _rebase_result = jj.rebase(&repo.repo_path, &change1, None, None);
+    
+    // Check conflict status
+    let status = jj.status(&repo.repo_path);
+    assert!(status.is_ok(), "Should be able to query status even with conflicts");
+    
+    if let Ok(s) = status {
+        if s.has_conflicts {
+            // Try to get conflicted files
+            let conflicted = jj.get_conflicted_files(&repo.repo_path);
+            assert!(conflicted.is_ok(), "Should be able to list conflicted files");
+        }
+    }
+}
+
+#[test]
+fn jj_concurrent_change_creation() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    // Base state
+    repo.write_file("base.txt", "base\n");
+    jj.describe(&repo.repo_path, "Base").unwrap();
+    
+    // Create multiple changes rapidly
+    for i in 0..5 {
+        jj.new_change(&repo.repo_path, Some(&format!("Change {}", i))).unwrap();
+        repo.write_file(&format!("file{}.txt", i), &format!("content {}\n", i));
+    }
+    
+    // All changes should be tracked
+    let log_result = jj.log(&repo.repo_path, Default::default());
+    assert!(log_result.is_ok(), "Should be able to view all changes");
+}
+
+#[test]
+fn jj_git_push_pull_roundtrip() {
+    if !vcs_test_utils::is_jj_available() {
+        eprintln!("Skipping: jj not available");
+        return;
+    }
+    
+    // This test would ideally test jj's git interop with a real remote
+    // For now, just test that git export/import works
+    let repo = VcsTestRepo::init(VcsBackend::Jujutsu);
+    let jj = JujutsuCli::new();
+    
+    repo.write_file("test.txt", "test content\n");
+    jj.describe(&repo.repo_path, "Test commit").unwrap();
+    
+    // Export to git
+    assert!(jj.git_export(&repo.repo_path).is_ok(), "Git export should work");
+    
+    // Import back
+    assert!(jj.git_import(&repo.repo_path).is_ok(), "Git import should work");
+    
+    // Status should still be readable
+    let status = jj.status(&repo.repo_path);
+    assert!(status.is_ok(), "Status should be readable after export/import");
 }

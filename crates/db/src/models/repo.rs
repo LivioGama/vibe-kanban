@@ -22,6 +22,7 @@ pub struct Repo {
     pub path: PathBuf,
     pub name: String,
     pub display_name: String,
+    pub vcs_backend: String,
     pub setup_script: Option<String>,
     pub cleanup_script: Option<String>,
     pub copy_files: Option<String>,
@@ -95,6 +96,7 @@ impl Repo {
                       path,
                       name,
                       display_name,
+                      vcs_backend,
                       setup_script,
                       cleanup_script,
                       copy_files,
@@ -133,6 +135,7 @@ impl Repo {
                       path,
                       name,
                       display_name,
+                      vcs_backend,
                       setup_script,
                       cleanup_script,
                       copy_files,
@@ -171,6 +174,18 @@ impl Repo {
     where
         E: Executor<'e, Database = Sqlite>,
     {
+        Self::find_or_create_with_backend(executor, path, display_name, "git").await
+    }
+
+    pub async fn find_or_create_with_backend<'e, E>(
+        executor: E,
+        path: &Path,
+        display_name: &str,
+        vcs_backend: &str,
+    ) -> Result<Self, sqlx::Error>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
         let path_str = path.to_string_lossy().to_string();
         let id = Uuid::new_v4();
         let repo_name = path
@@ -181,13 +196,14 @@ impl Repo {
         // Use INSERT OR IGNORE + SELECT to handle race conditions atomically
         sqlx::query_as!(
             Repo,
-            r#"INSERT INTO repos (id, path, name, display_name)
-               VALUES ($1, $2, $3, $4)
+            r#"INSERT INTO repos (id, path, name, display_name, vcs_backend)
+               VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT(path) DO UPDATE SET updated_at = updated_at
                RETURNING id as "id!: Uuid",
                          path,
                          name,
                          display_name,
+                         vcs_backend,
                          setup_script,
                          cleanup_script,
                          copy_files,
@@ -199,6 +215,7 @@ impl Repo {
             path_str,
             repo_name,
             display_name,
+            vcs_backend,
         )
         .fetch_one(executor)
         .await
@@ -222,6 +239,7 @@ impl Repo {
                       path,
                       name,
                       display_name,
+                      vcs_backend,
                       setup_script,
                       cleanup_script,
                       copy_files,
@@ -288,6 +306,7 @@ impl Repo {
                          path,
                          name,
                          display_name,
+                         vcs_backend,
                          setup_script,
                          cleanup_script,
                          copy_files,

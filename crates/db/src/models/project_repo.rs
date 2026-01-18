@@ -30,6 +30,12 @@ pub struct ProjectRepo {
 pub struct CreateProjectRepo {
     pub display_name: String,
     pub git_repo_path: String,
+    #[serde(default = "default_vcs_backend")]
+    pub vcs_backend: String,
+}
+
+fn default_vcs_backend() -> String {
+    "git".to_string()
 }
 
 impl ProjectRepo {
@@ -77,6 +83,7 @@ impl ProjectRepo {
                       r.path,
                       r.name,
                       r.display_name,
+                      r.vcs_backend,
                       r.setup_script,
                       r.cleanup_script,
                       r.copy_files,
@@ -119,7 +126,17 @@ impl ProjectRepo {
         repo_path: &str,
         repo_name: &str,
     ) -> Result<Repo, ProjectRepoError> {
-        let repo = Repo::find_or_create(pool, Path::new(repo_path), repo_name).await?;
+        Self::add_repo_to_project_with_backend(pool, project_id, repo_path, repo_name, "git").await
+    }
+
+    pub async fn add_repo_to_project_with_backend(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        repo_path: &str,
+        repo_name: &str,
+        vcs_backend: &str,
+    ) -> Result<Repo, ProjectRepoError> {
+        let repo = Repo::find_or_create_with_backend(pool, Path::new(repo_path), repo_name, vcs_backend).await?;
 
         if Self::find_by_project_and_repo(pool, project_id, repo.id)
             .await?

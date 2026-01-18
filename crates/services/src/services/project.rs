@@ -99,6 +99,7 @@ impl ProjectService {
             normalized_repos.push(CreateProjectRepo {
                 display_name: repo.display_name.clone(),
                 git_repo_path: normalized_path,
+                vcs_backend: repo.vcs_backend.clone(),
             });
         }
 
@@ -110,7 +111,7 @@ impl ProjectService {
 
         for repo in &normalized_repos {
             let repo_entity =
-                Repo::find_or_create(pool, Path::new(&repo.git_repo_path), &repo.display_name)
+                Repo::find_or_create_with_backend(pool, Path::new(&repo.git_repo_path), &repo.display_name, &repo.vcs_backend)
                     .await?;
             ProjectRepo::create(pool, project.id, repo_entity.id).await?;
         }

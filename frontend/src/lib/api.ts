@@ -872,10 +872,15 @@ export const repoApi = {
   register: async (data: {
     path: string;
     display_name?: string;
+    vcs_backend?: string;
   }): Promise<Repo> => {
     const response = await makeRequest('/api/repos', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ 
+        path: data.path,
+        display_name: data.display_name,
+        vcs_backend: data.vcs_backend || 'git'
+      }),
     });
     return handleApiResponse<Repo>(response);
   },
@@ -888,10 +893,15 @@ export const repoApi = {
   init: async (data: {
     parent_path: string;
     folder_name: string;
+    vcs_backend?: string;
   }): Promise<Repo> => {
     const response = await makeRequest('/api/repos/init', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        parent_path: data.parent_path,
+        folder_name: data.folder_name,
+        vcs_backend: data.vcs_backend || 'git'
+      }),
     });
     return handleApiResponse<Repo>(response);
   },

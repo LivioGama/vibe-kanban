@@ -27,6 +27,12 @@ use crate::{
 pub struct RegisterRepoRequest {
     pub path: String,
     pub display_name: Option<String>,
+    #[serde(default = "default_vcs_backend")]
+    pub vcs_backend: String,
+}
+
+fn default_vcs_backend() -> String {
+    "git".to_string()
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -34,6 +40,8 @@ pub struct RegisterRepoRequest {
 pub struct InitRepoRequest {
     pub parent_path: String,
     pub folder_name: String,
+    #[serde(default = "default_vcs_backend")]
+    pub vcs_backend: String,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -48,10 +56,11 @@ pub async fn register_repo(
 ) -> Result<ResponseJson<ApiResponse<Repo>>, ApiError> {
     let repo = deployment
         .repo()
-        .register(
+        .register_with_backend(
             &deployment.db().pool,
             &payload.path,
             payload.display_name.as_deref(),
+            &payload.vcs_backend,
         )
         .await?;
 
@@ -64,11 +73,12 @@ pub async fn init_repo(
 ) -> Result<ResponseJson<ApiResponse<Repo>>, ApiError> {
     let repo = deployment
         .repo()
-        .init_repo(
+        .init_repo_with_backend(
             &deployment.db().pool,
             deployment.git(),
             &payload.parent_path,
             &payload.folder_name,
+            &payload.vcs_backend,
         )
         .await?;
 

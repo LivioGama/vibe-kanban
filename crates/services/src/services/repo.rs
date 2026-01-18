@@ -66,6 +66,16 @@ impl RepoService {
         path: &str,
         display_name: Option<&str>,
     ) -> Result<RepoModel> {
+        self.register_with_backend(pool, path, display_name, "git").await
+    }
+
+    pub async fn register_with_backend(
+        &self,
+        pool: &SqlitePool,
+        path: &str,
+        display_name: Option<&str>,
+        vcs_backend: &str,
+    ) -> Result<RepoModel> {
         let normalized_path = self.normalize_path(path)?;
         self.validate_git_repo_path(&normalized_path)?;
 
@@ -76,7 +86,7 @@ impl RepoService {
 
         let display_name = display_name.unwrap_or(&name);
 
-        let repo = RepoModel::find_or_create(pool, &normalized_path, display_name).await?;
+        let repo = RepoModel::find_or_create_with_backend(pool, &normalized_path, display_name, vcs_backend).await?;
         Ok(repo)
     }
 
@@ -97,6 +107,17 @@ impl RepoService {
         git: &GitService,
         parent_path: &str,
         folder_name: &str,
+    ) -> Result<RepoModel> {
+        self.init_repo_with_backend(pool, git, parent_path, folder_name, "git").await
+    }
+
+    pub async fn init_repo_with_backend(
+        &self,
+        pool: &SqlitePool,
+        git: &GitService,
+        parent_path: &str,
+        folder_name: &str,
+        vcs_backend: &str,
     ) -> Result<RepoModel> {
         if folder_name.is_empty()
             || folder_name.contains('/')
@@ -122,7 +143,7 @@ impl RepoService {
 
         git.initialize_repo_with_main_branch(&repo_path)?;
 
-        let repo = RepoModel::find_or_create(pool, &repo_path, folder_name).await?;
+        let repo = RepoModel::find_or_create_with_backend(pool, &repo_path, folder_name, vcs_backend).await?;
         Ok(repo)
     }
 }

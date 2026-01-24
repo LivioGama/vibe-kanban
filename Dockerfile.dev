@@ -78,8 +78,8 @@ RUN addgroup -g 1001 -S appgroup && \
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
 # Create necessary directories and set permissions
-RUN mkdir -p /repos /data && \
-    chown -R appuser:appgroup /repos /data
+RUN mkdir -p /repos /data /home/appuser/.config && \
+    chown -R appuser:appgroup /repos /data /home/appuser/.config
 
 # Switch to non-root user
 USER appuser

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id as \"id!: Uuid\",\n                      name,\n                      default_agent_working_dir,\n                      remote_project_id as \"remote_project_id: Uuid\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM projects\n               WHERE rowid = $1",
+  "query": "\n            SELECT p.id as \"id!: Uuid\", p.name,\n                   p.default_agent_working_dir,\n                   p.remote_project_id as \"remote_project_id: Uuid\",\n                   p.created_at as \"created_at!: DateTime<Utc>\", p.updated_at as \"updated_at!: DateTime<Utc>\",\n                   p.yolo_mode as \"yolo_mode!: bool\"\n            FROM projects p\n            WHERE p.id IN (\n                SELECT DISTINCT t.project_id\n                FROM tasks t\n                INNER JOIN workspaces w ON w.task_id = t.id\n                ORDER BY w.updated_at DESC\n            )\n            LIMIT $1\n            ",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,11 @@
         "name": "updated_at!: DateTime<Utc>",
         "ordinal": 5,
         "type_info": "Text"
+      },
+      {
+        "name": "yolo_mode!: bool",
+        "ordinal": 6,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -43,8 +48,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "20ca258823c512b29c3ce0088ec6d1595e13eadce66575987af9970fa4590069"
+  "hash": "32c2b6ce46f5275ad9f1e09268d9d22a728779bcbe5dcd6d50d36eccd04b8c92"
 }

@@ -50,6 +50,7 @@ use services::services::{
     notification::NotificationService,
     queued_message::QueuedMessageService,
     workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
+    yolo::YoloService,
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
@@ -75,6 +76,7 @@ pub struct LocalContainerService {
     approvals: Approvals,
     queued_message_service: QueuedMessageService,
     notification_service: NotificationService,
+    yolo_service: YoloService,
 }
 
 impl LocalContainerService {
@@ -88,6 +90,7 @@ impl LocalContainerService {
         analytics: Option<AnalyticsContext>,
         approvals: Approvals,
         queued_message_service: QueuedMessageService,
+        yolo_service: YoloService,
     ) -> Self {
         let child_store = Arc::new(RwLock::new(HashMap::new()));
         let interrupt_senders = Arc::new(RwLock::new(HashMap::new()));
@@ -105,6 +108,7 @@ impl LocalContainerService {
             approvals,
             queued_message_service,
             notification_service,
+            yolo_service,
         };
 
         container.spawn_workspace_cleanup();
@@ -545,6 +549,12 @@ impl LocalContainerService {
                         }
                     } else {
                         container.finalize_task(&ctx).await;
+                        
+                        // NEW: Trigger YOLO auto-merge if enabled
+                        if let Err(e) = container.yolo_service.try_auto_merge(&ctx).await {
+                            tracing::warn!("YOLO auto-merge failed: {}", e);
+                            // In a real app we might want to notify the user via websocket
+                        }
                     }
                 }
 

@@ -21,7 +21,8 @@
     "noSearchResults": "No tasks match your search."
   },
   "actions": {
-    "addTask": "Add task"
+    "addTask": "Add task",
+    "startAll": "Start all todo"
   },
   "filters": {
     "sharedToggleAria": "Toggle shared tasks",

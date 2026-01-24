@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "UPDATE projects\n               SET name = $2\n               WHERE id = $1\n               RETURNING id as \"id!: Uuid\",\n                         name,\n                         default_agent_working_dir,\n                         remote_project_id as \"remote_project_id: Uuid\",\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         updated_at as \"updated_at!: DateTime<Utc>\"",
+  "query": "INSERT INTO projects (\n                    id,\n                    name,\n                    yolo_mode\n                ) VALUES (\n                    $1, $2, false\n                )\n                RETURNING id as \"id!: Uuid\",\n                          name,\n                          default_agent_working_dir,\n                          remote_project_id as \"remote_project_id: Uuid\",\n                          created_at as \"created_at!: DateTime<Utc>\",\n                          updated_at as \"updated_at!: DateTime<Utc>\",\n                          yolo_mode as \"yolo_mode!: bool\"",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,11 @@
         "name": "updated_at!: DateTime<Utc>",
         "ordinal": 5,
         "type_info": "Text"
+      },
+      {
+        "name": "yolo_mode!: bool",
+        "ordinal": 6,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -40,11 +45,12 @@
     "nullable": [
       true,
       false,
+      false,
       true,
-      true,
+      false,
       false,
       false
     ]
   },
-  "hash": "38d1abbfb839e62833308d65b9417d2217281d0082965cca6b15a9f3e9be1c3b"
+  "hash": "623cf2d2d5f39e7c5cd1ae47f1ce956edd65a743601c4c8f492989b0c365ef6e"
 }

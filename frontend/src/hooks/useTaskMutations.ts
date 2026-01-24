@@ -94,10 +94,21 @@ export function useTaskMutations(projectId?: string) {
     },
   });
 
+  const startAllTodo = useMutation({
+    mutationFn: (projectId: string) => tasksApi.startAllTodo(projectId),
+    onSuccess: () => {
+      invalidateQueries();
+    },
+    onError: (err) => {
+      console.error('Failed to start all todos:', err);
+    },
+  });
+
   return {
     createTask,
     createAndStart,
     updateTask,
     deleteTask,
+    startAllTodo,
   };
 }

@@ -654,6 +654,21 @@ impl GitCli {
         }
         Ok(files)
     }
+
+    pub fn rebase(&self, worktree_path: &Path, onto: &str) -> Result<(), GitCliError> {
+        self.git(worktree_path, ["rebase", onto])?;
+        Ok(())
+    }
+
+    pub fn rebase_with_strategy(
+        &self,
+        worktree_path: &Path,
+        onto: &str,
+        strategy: &str,
+    ) -> Result<(), GitCliError> {
+        self.git(worktree_path, ["rebase", "-X", strategy, onto])?;
+        Ok(())
+    }
 }
 
 // Private methods

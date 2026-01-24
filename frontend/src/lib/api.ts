@@ -399,6 +399,17 @@ export const tasksApi = {
     });
     return handleApiResponse<void>(response);
   },
+
+  startAllTodo: async (projectId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/tasks/start-all-todo?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(null),
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
 };
 
 // Sessions API

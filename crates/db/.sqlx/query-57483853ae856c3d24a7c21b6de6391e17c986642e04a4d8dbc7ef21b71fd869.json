@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id as \"id!: Uuid\",\n                      name,\n                      default_agent_working_dir,\n                      remote_project_id as \"remote_project_id: Uuid\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM projects\n               WHERE remote_project_id = $1\n               LIMIT 1",
+  "query": "SELECT id as \"id!: Uuid\",\n                      name,\n                      default_agent_working_dir,\n                      remote_project_id as \"remote_project_id: Uuid\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\",\n                      yolo_mode as \"yolo_mode!: bool\"\n               FROM projects\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,11 @@
         "name": "updated_at!: DateTime<Utc>",
         "ordinal": 5,
         "type_info": "Text"
+      },
+      {
+        "name": "yolo_mode!: bool",
+        "ordinal": 6,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -43,8 +48,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "46226e272418a9080d4e350da68358dbe7c2a8b70af321e4a026ad985bbbc6fd"
+  "hash": "57483853ae856c3d24a7c21b6de6391e17c986642e04a4d8dbc7ef21b71fd869"
 }

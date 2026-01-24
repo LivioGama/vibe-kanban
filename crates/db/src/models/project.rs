@@ -27,6 +27,8 @@ pub struct Project {
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+    /// Enables YOLO mode for the project – automatic merge after task completion
+    pub yolo_mode: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -38,6 +40,8 @@ pub struct CreateProject {
 #[derive(Debug, Deserialize, TS)]
 pub struct UpdateProject {
     pub name: Option<String>,
+    /// Optional toggle for YOLO mode
+    pub yolo_mode: Option<bool>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -72,7 +76,8 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
+                      updated_at as "updated_at!: DateTime<Utc>",
+                      yolo_mode as "yolo_mode!: bool"
                FROM projects
                ORDER BY created_at DESC"#
         )
@@ -88,7 +93,8 @@ impl Project {
             SELECT p.id as "id!: Uuid", p.name,
                    p.default_agent_working_dir,
                    p.remote_project_id as "remote_project_id: Uuid",
-                   p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>"
+                   p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>",
+                   p.yolo_mode as "yolo_mode!: bool"
             FROM projects p
             WHERE p.id IN (
                 SELECT DISTINCT t.project_id
@@ -112,7 +118,8 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
+                      updated_at as "updated_at!: DateTime<Utc>",
+                      yolo_mode as "yolo_mode!: bool"
                FROM projects
                WHERE id = $1"#,
             id
@@ -129,7 +136,8 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
+                      updated_at as "updated_at!: DateTime<Utc>",
+                      yolo_mode as "yolo_mode!: bool"
                FROM projects
                WHERE rowid = $1"#,
             rowid
@@ -149,7 +157,8 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
+                      updated_at as "updated_at!: DateTime<Utc>",
+                      yolo_mode as "yolo_mode!: bool"
                FROM projects
                WHERE remote_project_id = $1
                LIMIT 1"#,
@@ -168,16 +177,18 @@ impl Project {
             Project,
             r#"INSERT INTO projects (
                     id,
-                    name
+                    name,
+                    yolo_mode
                 ) VALUES (
-                    $1, $2
+                    $1, $2, false
                 )
                 RETURNING id as "id!: Uuid",
                           name,
                           default_agent_working_dir,
                           remote_project_id as "remote_project_id: Uuid",
                           created_at as "created_at!: DateTime<Utc>",
-                          updated_at as "updated_at!: DateTime<Utc>""#,
+                          updated_at as "updated_at!: DateTime<Utc>",
+                          yolo_mode as "yolo_mode!: bool""#,
             project_id,
             data.name,
         )
@@ -199,16 +210,19 @@ impl Project {
         sqlx::query_as!(
             Project,
             r#"UPDATE projects
-               SET name = $2
+               SET name = $2,
+                   yolo_mode = COALESCE($3, yolo_mode)
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          name,
                          default_agent_working_dir,
                          remote_project_id as "remote_project_id: Uuid",
                          created_at as "created_at!: DateTime<Utc>",
-                         updated_at as "updated_at!: DateTime<Utc>""#,
+                         updated_at as "updated_at!: DateTime<Utc>",
+                         yolo_mode as "yolo_mode!: bool""#,
             id,
             name,
+            payload.yolo_mode,
         )
         .fetch_one(pool)
         .await

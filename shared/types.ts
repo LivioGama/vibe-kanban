@@ -4,11 +4,19 @@
 
 // If you are an AI, and you absolutely have to edit this file, please confirm with the user first.
 
-export type Project = { id: string, name: string, default_agent_working_dir: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, default_agent_working_dir: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, 
+/**
+ * Enables YOLO mode for the project – automatic merge after task completion
+ */
+yolo_mode: boolean, };
 
 export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
 
-export type UpdateProject = { name: string | null, };
+export type UpdateProject = { name: string | null, 
+/**
+ * Optional toggle for YOLO mode
+ */
+yolo_mode: boolean | null, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, 
 /**
@@ -237,6 +245,12 @@ export type OpenEditorRequest = { editor_type: string | null, file_path: string 
 export type OpenEditorResponse = { url: string | null, };
 
 export type CreateAndStartTaskRequest = { task: CreateTask, executor_profile_id: ExecutorProfileId, repos: Array<WorkspaceRepoInput>, };
+
+export type StartAllTodoRequest = { executor_profile_id: ExecutorProfileId | null, repos: Array<WorkspaceRepoInput> | null, };
+
+export type StartAllTodoResponse = { started_count: number, failed_count: number, task_ids: Array<string>, };
+
+export type TaskQuery = { project_id: string, };
 
 export type CreatePrApiRequest = { title: string, body: string | null, target_branch: string | null, draft: boolean | null, repo_id: string, auto_generate_description: boolean, };
 

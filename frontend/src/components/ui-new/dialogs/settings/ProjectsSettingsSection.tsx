@@ -226,6 +226,7 @@ export function ProjectsSettingsSection() {
     try {
       const updateData: UpdateProject = {
         name: draft.name.trim(),
+        yolo_mode: selectedProject.yolo_mode,
       };
 
       updateProject.mutate({

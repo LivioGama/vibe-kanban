@@ -1432,6 +1432,24 @@ impl GitService {
         Ok(final_commit.id().to_string())
     }
 
+    /// Rebase the current branch onto another branch
+    pub fn rebase(&self, repo_path: &Path, onto: &str) -> Result<(), GitServiceError> {
+        let git = GitCli::new();
+        git.rebase(repo_path, onto).map_err(GitServiceError::GitCLI)
+    }
+
+    /// Rebase the current branch onto another branch with a strategy
+    pub fn rebase_with_strategy(
+        &self,
+        repo_path: &Path,
+        onto: &str,
+        strategy: &str,
+    ) -> Result<(), GitServiceError> {
+        let git = GitCli::new();
+        git.rebase_with_strategy(repo_path, onto, strategy)
+            .map_err(GitServiceError::GitCLI)
+    }
+
     pub fn find_branch_type(
         &self,
         repo_path: &Path,
@@ -1754,6 +1772,13 @@ impl GitService {
         self.fetch_from_remote(repo, remote, &refspec)
     }
 
+    /// Fetch all from default remote
+    pub fn fetch(&self, repo_path: &Path) -> Result<(), GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+        let remote = self.get_remote_from_branch_ref(&repo, &repo.head()?)?;
+        self.fetch_all_from_remote(&repo, &remote)
+    }
+
     /// Clone a repository to the specified directory
     #[cfg(feature = "cloud")]
     pub fn clone_repository(
@@ -1882,5 +1907,15 @@ impl GitService {
         }
 
         Ok(stats)
+    }
+
+    /// Push the current branch to its default remote
+    pub fn push(&self, repo_path: &Path) -> Result<(), GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+        let head = repo.head()?;
+        let branch_name = head
+            .shorthand()
+            .ok_or_else(|| GitServiceError::InvalidRepository("HEAD has no name".into()))?;
+        self.push_to_remote(repo_path, branch_name, false)
     }
 }

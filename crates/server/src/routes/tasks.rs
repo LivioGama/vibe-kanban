@@ -14,8 +14,9 @@ use axum::{
 };
 use db::models::{
     image::TaskImage,
+    project_repo::ProjectRepo,
     repo::{Repo, RepoError},
-    task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
+    task::{CreateTask, Task, TaskStatus, TaskWithAttemptStatus, UpdateTask},
     workspace::{CreateWorkspace, Workspace},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
 };
@@ -34,7 +35,7 @@ use crate::{
     routes::task_attempts::WorkspaceRepoInput,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
 pub struct TaskQuery {
     pub project_id: Uuid,
 }
@@ -144,6 +145,19 @@ pub struct CreateAndStartTaskRequest {
     pub repos: Vec<WorkspaceRepoInput>,
 }
 
+#[derive(Debug, Deserialize, TS)]
+pub struct StartAllTodoRequest {
+    pub executor_profile_id: Option<ExecutorProfileId>,
+    pub repos: Option<Vec<WorkspaceRepoInput>>,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct StartAllTodoResponse {
+    pub started_count: usize,
+    pub failed_count: usize,
+    pub task_ids: Vec<Uuid>,
+}
+
 pub async fn create_task_and_start(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateAndStartTaskRequest>,
@@ -242,6 +256,134 @@ pub async fn create_task_and_start(
         has_in_progress_attempt: is_attempt_running,
         last_attempt_failed: false,
         executor: payload.executor_profile_id.executor.to_string(),
+    })))
+}
+
+pub async fn start_all_todo_tasks(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<TaskQuery>,
+    Json(payload): Json<Option<StartAllTodoRequest>>,
+) -> Result<ResponseJson<ApiResponse<StartAllTodoResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let project_id = query.project_id;
+
+    // Get default executor from config
+    let default_executor = {
+        let config = deployment.config().read().await;
+        config.executor_profile.clone()
+    };
+
+    // Get default repos for project if not provided
+    let (executor_profile_id, repos_input) = if let Some(p) = payload {
+        (p.executor_profile_id.unwrap_or(default_executor), p.repos)
+    } else {
+        (default_executor, None)
+    };
+
+    let repos_input: Vec<WorkspaceRepoInput> = match repos_input {
+        Some(r) => r,
+        None => {
+            let project_repos = ProjectRepo::find_repos_for_project(pool, project_id).await?;
+            project_repos
+                .into_iter()
+                .map(|r| WorkspaceRepoInput {
+                    repo_id: r.id,
+                    target_branch: r
+                        .default_target_branch
+                        .unwrap_or_else(|| "main".to_string()),
+                })
+                .collect()
+        }
+    };
+
+    if repos_input.is_empty() {
+        return Err(ApiError::BadRequest(
+            "Project has no repositories".to_string(),
+        ));
+    }
+
+    let tasks = Task::find_by_project_id_with_attempt_status(pool, project_id).await?;
+    let todo_tasks: Vec<_> = tasks
+        .into_iter()
+        .filter(|t| t.task.status == TaskStatus::Todo && !t.has_in_progress_attempt)
+        .collect();
+
+    let mut started_count = 0;
+    let mut failed_count = 0;
+    let mut task_ids = Vec::new();
+
+    for task_with_status in todo_tasks {
+        let task = task_with_status.task;
+        let attempt_id = Uuid::new_v4();
+        let git_branch_name = deployment
+            .container()
+            .git_branch_from_workspace(&attempt_id, &task.title)
+            .await;
+
+        let agent_working_dir = if repos_input.len() == 1 {
+            match Repo::find_by_id(pool, repos_input[0].repo_id).await {
+                Ok(Some(repo)) => Some(repo.name),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        let workspace_result = Workspace::create(
+            pool,
+            &CreateWorkspace {
+                branch: git_branch_name,
+                agent_working_dir,
+            },
+            attempt_id,
+            task.id,
+        )
+        .await;
+
+        let workspace = match workspace_result {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!("Failed to create workspace for task {}: {}", task.id, e);
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        let workspace_repos: Vec<CreateWorkspaceRepo> = repos_input
+            .iter()
+            .map(|r| CreateWorkspaceRepo {
+                repo_id: r.repo_id,
+                target_branch: r.target_branch.clone(),
+            })
+            .collect();
+
+        if let Err(e) = WorkspaceRepo::create_many(pool, workspace.id, &workspace_repos).await {
+            tracing::error!(
+                "Failed to create workspace repos for task {}: {}",
+                task.id,
+                e
+            );
+            failed_count += 1;
+            continue;
+        }
+
+        if deployment
+            .container()
+            .start_workspace(&workspace, executor_profile_id.clone())
+            .await
+            .is_ok()
+        {
+            started_count += 1;
+            task_ids.push(task.id);
+        } else {
+            failed_count += 1;
+        }
+    }
+
+    Ok(ResponseJson(ApiResponse::success(StartAllTodoResponse {
+        started_count,
+        failed_count,
+        task_ids,
     })))
 }
 
@@ -403,6 +545,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/", get(get_tasks).post(create_task))
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
+        .route("/start-all-todo", post(start_all_todo_tasks))
         .nest("/{task_id}", task_id_router);
 
     // mount under /projects/:project_id/tasks

@@ -21,6 +21,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
@@ -31,11 +32,13 @@ import type { Project, Repo, UpdateProject } from 'shared/types';
 
 interface ProjectFormState {
   name: string;
+  yolo_mode: boolean;
 }
 
 function projectToFormState(project: Project): ProjectFormState {
   return {
     name: project.name,
+    yolo_mode: project.yolo_mode,
   };
 }
 
@@ -292,6 +295,7 @@ export function ProjectSettings() {
     try {
       const updateData: UpdateProject = {
         name: draft.name.trim(),
+        yolo_mode: draft.yolo_mode,
       };
 
       updateProject.mutate({
@@ -423,6 +427,21 @@ export function ProjectSettings() {
                 <p className="text-sm text-muted-foreground">
                   {t('settings.projects.general.name.helper')}
                 </p>
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 py-4 border-t">
+                <div className="space-y-0.5">
+                  <Label htmlFor="yolo-mode">YOLO Mode</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically rebase, resolve, and merge tasks when the agent
+                    completes.
+                  </p>
+                </div>
+                <Switch
+                  id="yolo-mode"
+                  checked={draft.yolo_mode}
+                  onCheckedChange={(checked) => updateDraft({ yolo_mode: checked })}
+                />
               </div>
 
               {/* Save Button */}

@@ -21,6 +21,7 @@ use services::services::{
     remote_client::{RemoteClient, RemoteClientError},
     repo::RepoService,
     worktree_manager::WorktreeManager,
+    yolo::YoloService,
 };
 use tokio::sync::RwLock;
 use utils::{
@@ -170,6 +171,7 @@ impl Deployment for LocalDeployment {
             user_id: user_id.clone(),
             analytics_service: s.clone(),
         });
+        let yolo_service = YoloService::new(db.clone(), git.clone());
         let container = LocalContainerService::new(
             db.clone(),
             msg_stores.clone(),
@@ -179,6 +181,7 @@ impl Deployment for LocalDeployment {
             analytics_ctx,
             approvals.clone(),
             queued_message_service.clone(),
+            yolo_service,
         )
         .await;
 

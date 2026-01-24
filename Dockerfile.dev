@@ -57,10 +57,18 @@ RUN apk add --no-cache \
     git \
     docker-cli \
     cargo \
-    openssl-dev
+    openssl-dev \
+    nodejs \
+    npm
 
 # Install Jujutsu (jj)
 RUN cargo install --locked jj-cli
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Install Codex CLI (OpenAI)
+RUN npm install -g @openai/codex
 
 # Create app user for security
 RUN addgroup -g 1001 -S appgroup && \

@@ -1,16 +1,10 @@
-# This file is kept for EasyPanel backward compatibility
-# It redirects to the simplified docker-compose.yml at the root
-
-# For production deployment with Postgres/ElectricSQL, use:
-# docker-compose.production.yml
-
 version: '3.8'
 
 services:
   vibekanban:
     build:
-      context: ../../
-      dockerfile: ./Dockerfile.dev
+      context: .
+      dockerfile: Dockerfile.dev
     expose:
       - "3000"
     environment:

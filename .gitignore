@@ -78,6 +78,13 @@ vibe-kanban-*.tgz
 # Development ports file
 .dev-ports.json
 
+# Lock files
+Cargo.lock
+bun.lock
+frontend/bun.lock
+package-lock.json
+pnpm-lock.yaml
+
 dev_assets
 /frontend/.env.sentry-build-plugin
 .ssh
@@ -85,3 +92,4 @@ dev_assets
 vibe-kanban-cloud/
 
 .jj
+.vercel

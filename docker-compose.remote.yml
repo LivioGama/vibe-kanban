@@ -1,0 +1,2 @@
+include:
+  - path: crates/remote/docker-compose.yml

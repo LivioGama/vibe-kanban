@@ -29,6 +29,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # CLI credentials persistence
       - cli-config:/home/appuser/.config
+      # App data persistence (~/.local/share/vibe-kanban)
+      - appuser-local:/home/appuser/.local
       # Map VPS user home so repo paths match
       - /home/devuser:/home/devuser
     restart: unless-stopped
@@ -51,4 +53,6 @@ volumes:
   vibekanban-data:
     driver: local
   cli-config:
+    driver: local
+  appuser-local:
     driver: local

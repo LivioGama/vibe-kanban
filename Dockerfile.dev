@@ -119,8 +119,8 @@ RUN addgroup -g 1001 -S appgroup && \
 
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
-RUN mkdir -p /repos /data /home/appuser/.config && \
-    chown -R appuser:appgroup /repos /data /home/appuser/.config
+RUN mkdir -p /repos /data /home/appuser/.config /home/appuser/.local/share && \
+    chown -R appuser:appgroup /repos /data /home/appuser
 
 USER appuser
 

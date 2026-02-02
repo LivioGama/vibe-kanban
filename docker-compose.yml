@@ -23,8 +23,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # CLI credentials persistence
       - cli-config:/home/appuser/.config
-      # User home directory persistence
-      - appuser-home:/home/appuser
+      # Map VPS user home into container
+      - /home/devuser:/home/appuser
     restart: unless-stopped
     healthcheck:
       test:
@@ -45,6 +45,4 @@ volumes:
   vibekanban-data:
     driver: local
   cli-config:
-    driver: local
-  appuser-home:
     driver: local

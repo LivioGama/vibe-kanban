@@ -69,7 +69,10 @@ RUN mkdir -p crates/server/src/bin crates/db/src crates/executors/src \
     echo "fn main() {}" > crates/review/src/main.rs
 
 # Build dependencies only (this layer is cached when Cargo.toml/lock don't change)
-RUN cargo build --release --bin server 2>/dev/null || true
+# SQLX_OFFLINE=true so sqlx macros don't need a live DB connection
+# Build the whole workspace so all dependency crates get compiled and cached
+ENV SQLX_OFFLINE=true
+RUN cargo build --release 2>&1 || true
 
 # --- Now copy actual source code ---
 COPY . .

@@ -72,7 +72,10 @@ RUN mkdir -p crates/server/src/bin crates/db/src crates/executors/src \
     echo "fn main() {}" > crates/review/src/main.rs
 
 # Build dependencies only (this layer is cached when Cargo.toml/lock don't change)
-RUN cargo build --release --bin server 2>/dev/null || true
+# SQLX_OFFLINE=true so sqlx macros don't need a live DB connection
+# Build the whole workspace so all dependency crates get compiled and cached
+ENV SQLX_OFFLINE=true
+RUN cargo build --release 2>&1 || true
 
 # --- Now copy actual source code ---
 COPY . .
@@ -97,13 +100,18 @@ RUN apk add --no-cache \
     wget \
     git \
     docker-cli \
-    cargo \
-    openssl-dev \
     nodejs \
     npm
 
-# Install Jujutsu (jj)
-RUN cargo install --locked jj-cli
+# Install Jujutsu (jj) from prebuilt binary
+ARG TARGETARCH
+RUN JJ_VERSION="0.37.0" && \
+    case "$TARGETARCH" in \
+      amd64) JJ_ARCH="x86_64" ;; \
+      arm64) JJ_ARCH="aarch64" ;; \
+      *) echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
+    esac && \
+    wget -qO- "https://github.com/jj-vcs/jj/releases/download/v${JJ_VERSION}/jj-v${JJ_VERSION}-${JJ_ARCH}-unknown-linux-musl.tar.gz" | tar xz -C /usr/local/bin jj
 
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code

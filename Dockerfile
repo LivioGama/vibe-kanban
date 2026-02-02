@@ -33,8 +33,49 @@ COPY npx-cli/package*.json ./npx-cli/
 # Install pnpm and dependencies
 RUN npm install -g pnpm && pnpm install
 
-# Copy source code
+# --- Rust dependency caching layer ---
+# Copy only Cargo manifests and lock file first
+COPY Cargo.toml Cargo.lock ./
+COPY crates/server/Cargo.toml ./crates/server/
+COPY crates/db/Cargo.toml ./crates/db/
+COPY crates/executors/Cargo.toml ./crates/executors/
+COPY crates/services/Cargo.toml ./crates/services/
+COPY crates/utils/Cargo.toml ./crates/utils/
+COPY crates/local-deployment/Cargo.toml ./crates/local-deployment/
+COPY crates/deployment/Cargo.toml ./crates/deployment/
+COPY crates/remote/Cargo.toml ./crates/remote/
+COPY crates/review/Cargo.toml ./crates/review/
+
+# Copy SQLx offline query data (needed for compilation)
+COPY crates/db/.sqlx ./crates/db/.sqlx
+COPY crates/remote/.sqlx ./crates/remote/.sqlx
+
+# Create stub source files so cargo can resolve the workspace and cache dependencies
+RUN mkdir -p crates/server/src/bin crates/db/src crates/executors/src \
+    crates/services/src crates/utils/src crates/local-deployment/src \
+    crates/deployment/src crates/remote/src/bin crates/review/src && \
+    echo "fn main() {}" > crates/server/src/main.rs && \
+    touch crates/server/src/lib.rs && \
+    echo "fn main() {}" > crates/server/src/bin/generate_types.rs && \
+    echo "fn main() {}" > crates/server/src/bin/mcp_task_server.rs && \
+    touch crates/db/src/lib.rs && \
+    touch crates/executors/src/lib.rs && \
+    touch crates/services/src/lib.rs && \
+    touch crates/utils/src/lib.rs && \
+    touch crates/local-deployment/src/lib.rs && \
+    touch crates/deployment/src/lib.rs && \
+    echo "fn main() {}" > crates/remote/src/main.rs && \
+    echo "fn main() {}" > crates/remote/src/bin/generate_types.rs && \
+    echo "fn main() {}" > crates/review/src/main.rs
+
+# Build dependencies only (this layer is cached when Cargo.toml/lock don't change)
+RUN cargo build --release --bin server 2>/dev/null || true
+
+# --- Now copy actual source code ---
 COPY . .
+
+# Force rebuild of our crates (touch so cargo sees them as newer than cached deps)
+RUN find crates -name "*.rs" -exec touch {} +
 
 # Build application
 RUN npm run generate-types

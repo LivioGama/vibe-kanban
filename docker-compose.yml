@@ -23,8 +23,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # CLI credentials persistence
       - cli-config:/home/appuser/.config
-      # Map VPS user home into container
-      - /home/devuser:/home/appuser
+      # Map VPS user home so repo paths match
+      - /home/devuser:/home/devuser
     restart: unless-stopped
     healthcheck:
       test:

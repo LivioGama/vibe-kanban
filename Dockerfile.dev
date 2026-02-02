@@ -107,23 +107,30 @@ RUN JJ_VERSION="0.37.0" && \
     esac && \
     wget -qO- "https://github.com/jj-vcs/jj/releases/download/v${JJ_VERSION}/jj-v${JJ_VERSION}-${JJ_ARCH}-unknown-linux-musl.tar.gz" | tar xz -C /usr/local/bin --strip-components=0 ./jj
 
+# Install Bun runtime (required by Claude Code)
+RUN apk add --no-cache bash curl unzip && \
+    wget -qO- https://bun.sh/install | BUN_INSTALL=/usr/local bash
+
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
 # Install Codex CLI (OpenAI)
 RUN npm install -g @openai/codex
 
-# Create app user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+# Create app user matching host devuser UID for bind-mount compatibility
+RUN addgroup -g 1000 -S appgroup && \
+    adduser -u 1000 -S -h /home/appuser -G appgroup appuser
 
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
 RUN mkdir -p /repos /data /home/appuser/.config /home/appuser/.local/share && \
-    chown -R appuser:appgroup /repos /data /home/appuser
+    chown -R appuser:appgroup /repos /data /home/appuser && \
+    git config --system safe.directory '*'
 
 USER appuser
 
+ENV HOME=/home/appuser
+ENV VIBE_REPOS_DIR=/home/devuser/repos
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV RUST_LOG=info

@@ -289,17 +289,26 @@ impl FilesystemService {
     }
 
     fn get_home_directory() -> PathBuf {
+        // VIBE_REPOS_DIR takes absolute priority — used in Docker/EasyPanel deployments
+        if let Ok(dir) = std::env::var("VIBE_REPOS_DIR") {
+            let p = PathBuf::from(&dir);
+            if p.is_dir() {
+                return p;
+            }
+        }
         dirs::home_dir()
             .or_else(dirs::desktop_dir)
             .or_else(dirs::document_dir)
             .unwrap_or_else(|| {
-                if cfg!(windows) {
-                    std::env::var("USERPROFILE")
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|_| PathBuf::from("C:\\"))
-                } else {
-                    PathBuf::from("/")
-                }
+                std::env::current_dir().unwrap_or_else(|_| {
+                    if cfg!(windows) {
+                        std::env::var("USERPROFILE")
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|_| PathBuf::from("C:\\"))
+                    } else {
+                        PathBuf::from("/")
+                    }
+                })
             })
     }
 

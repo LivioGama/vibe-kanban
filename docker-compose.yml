@@ -16,6 +16,7 @@ services:
       - VITE_APP_BASE_URL=${VITE_APP_BASE_URL:-http://localhost:3000}
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3000}
       - VIBEKANBAN_REMOTE_JWT_SECRET=${VIBEKANBAN_REMOTE_JWT_SECRET:-bWP+v6Jj+SjFID0Yt4Ul4TgVQj+yRTaxq1CzkdA+hv/NTCkyqqZGLK1jhRtvVjrM}
+      - VIBE_REPOS_DIR=/home/devuser/repos
     volumes:
       # SQLite database persistence
       - vibekanban-data:/data

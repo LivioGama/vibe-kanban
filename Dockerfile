@@ -90,7 +90,7 @@ RUN apk add --no-cache \
     wget
 
 RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+    adduser -u 1001 -S -h /home/appuser -G appgroup appuser
 
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
@@ -99,6 +99,7 @@ RUN mkdir -p /repos && \
 
 USER appuser
 
+ENV HOME=/home/appuser
 ENV HOST=0.0.0.0
 ENV PORT=3000
 EXPOSE 3000

@@ -44,15 +44,16 @@ COPY assets assets
 RUN mkdir -p /app/bin
 
 # When billing feature is not requested, remove the private git dependency
-# so Cargo doesn't attempt SSH authentication during fetch
+# and its lockfile entry so Cargo doesn't attempt SSH authentication.
+# Combined in a single RUN to avoid Docker layer caching issues.
 ARG FEATURES
-RUN if echo "${FEATURES}" | grep -qv "vk-billing"; then \
-      sed -i '/billing.*git.*ssh/d' crates/remote/Cargo.toml; \
-    fi
-
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/app/target \
+    if echo "${FEATURES}" | grep -qv "vk-billing"; then \
+      sed -i '/billing.*git.*ssh/d' crates/remote/Cargo.toml; \
+      sed -i '/name = "billing"/,/^$/d' Cargo.lock; \
+    fi && \
     cargo build --release --manifest-path crates/remote/Cargo.toml ${FEATURES:+--features ${FEATURES}} \
  && cp crates/remote/target/release/${APP_NAME} /app/bin/${APP_NAME}
 

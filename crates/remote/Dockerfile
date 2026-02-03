@@ -52,6 +52,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     if echo "${FEATURES}" | grep -qv "vk-billing"; then \
       sed -i '/billing.*git.*ssh/d' crates/remote/Cargo.toml; \
+      sed -i '/vk-billing/d' crates/remote/Cargo.toml; \
       sed -i '/name = "billing"/,/^$/d' Cargo.lock; \
     fi && \
     cargo build --release --manifest-path crates/remote/Cargo.toml ${FEATURES:+--features ${FEATURES}} \
